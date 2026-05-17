@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
 
 const PUBLIC_PREFIXES = ["/_next", "/favicon.ico", "/icon.svg", "/login", "/api/auth", "/api/health"];
 const WEBHOOK_PREFIXES = ["/api/webhooks"];
@@ -16,16 +16,8 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (isPublicPath(pathname) || isWebhookPath(pathname)) return NextResponse.next();
 
-  if (request.cookies.has(SESSION_COOKIE_NAME)) {
-    const sessionUrl = request.nextUrl.clone();
-    sessionUrl.pathname = "/api/auth/session";
-    sessionUrl.search = "";
-    const sessionResponse = await fetch(sessionUrl, {
-      headers: { cookie: request.headers.get("cookie") ?? "" },
-      cache: "no-store"
-    }).catch(() => null);
-    if (sessionResponse?.ok) return NextResponse.next();
-  }
+  const session = await verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+  if (session) return NextResponse.next();
 
   if (pathname.startsWith("/api")) {
     return NextResponse.json({ error: "Sessao expirada ou ausente." }, { status: 401 });
