@@ -82,8 +82,10 @@ function optionalDevice(challenge: ConnectChallenge) {
 
 export function buildConnectRequest(id: string, challenge: ConnectChallenge) {
   const device = optionalDevice(challenge);
-  const configuredMode = cleanEnv(process.env.OPENCLAW_CLIENT_MODE, "operator");
-  const clientMode = configuredMode === "backend" || !["operator", "node"].includes(configuredMode) ? "operator" : configuredMode;
+  const configuredMode = cleanEnv(process.env.OPENCLAW_CLIENT_MODE, "backend");
+  const clientMode = ["backend", "operator", "node", "probe", "test", "cli"].includes(configuredMode)
+    ? configuredMode
+    : "backend";
 
   return {
     type: "req",

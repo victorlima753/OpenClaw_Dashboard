@@ -23,7 +23,7 @@ describe("OpenClaw gateway protocol helpers", () => {
       params: {
         minProtocol: 3,
         maxProtocol: 4,
-        client: { id: "gateway-client", mode: "operator" },
+        client: { id: "gateway-client", mode: "backend" },
         role: "operator",
         auth: { token: "token-123" }
       }
@@ -41,15 +41,25 @@ describe("OpenClaw gateway protocol helpers", () => {
     });
   });
 
-  it("normalizes quoted or unsupported EasyPanel env values", () => {
+  it("normalizes quoted EasyPanel env values", () => {
     vi.stubEnv("OPENCLAW_CLIENT_MODE", '"backend"');
     vi.stubEnv("OPENCLAW_CLIENT_ID", '"gateway-client"');
     vi.stubEnv("OPENCLAW_GATEWAY_TOKEN", '"token-123"');
 
     const request = buildConnectRequest("connect-id", { nonce: "nonce-123" });
 
-    expect(request.params.client).toMatchObject({ id: "gateway-client", mode: "operator" });
+    expect(request.params.client).toMatchObject({ id: "gateway-client", mode: "backend" });
     expect(request.params.auth).toEqual({ token: "token-123" });
+
+    vi.unstubAllEnvs();
+  });
+
+  it("falls back to backend for unsupported client modes", () => {
+    vi.stubEnv("OPENCLAW_CLIENT_MODE", "unsupported");
+
+    const request = buildConnectRequest("connect-id", { nonce: "nonce-123" });
+
+    expect(request.params.client).toMatchObject({ mode: "backend" });
 
     vi.unstubAllEnvs();
   });
