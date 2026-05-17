@@ -41,11 +41,13 @@
     "next": "latest",
     "next-themes": "latest",
     "pg": "^8.20.0",
+    "prisma": "^7.8.0",
     "react": "latest",
     "react-dom": "latest",
     "recharts": "latest",
     "tailwind-merge": "latest",
     "tailwindcss-animate": "latest",
+    "tsx": "^4.22.1",
     "zod": "latest",
     "zustand": "latest"
   },
@@ -63,9 +65,7 @@
     "jsdom": "latest",
     "postcss": "latest",
     "prettier": "latest",
-    "prisma": "latest",
     "tailwindcss": "^3.4.17",
-    "tsx": "latest",
     "typescript": "latest",
     "vitest": "latest"
   },
