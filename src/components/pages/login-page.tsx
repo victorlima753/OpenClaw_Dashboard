@@ -1,14 +1,13 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { LockKeyhole, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 export function LoginPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
@@ -34,9 +33,9 @@ export function LoginPage() {
     }
 
     const nextPath = searchParams.get("next");
-    const safeNextPath = nextPath?.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard";
-    router.replace(safeNextPath);
-    router.refresh();
+    const safeNextPath =
+      nextPath?.startsWith("/") && !nextPath.startsWith("//") && nextPath !== "/" ? nextPath : "/dashboard";
+    window.location.assign(safeNextPath);
   };
 
   return (

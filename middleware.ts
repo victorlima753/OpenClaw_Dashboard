@@ -32,7 +32,8 @@ export async function middleware(request: NextRequest) {
   }
 
   const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
+  const nextPath = pathname === "/" ? "/dashboard" : `${pathname}${request.nextUrl.search}`;
+  loginUrl.searchParams.set("next", nextPath);
   return NextResponse.redirect(loginUrl);
 }
 
