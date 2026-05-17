@@ -15,7 +15,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "verify:seed": "tsx scripts/verify-seed.ts",
-    "worker:openclaw": "tsx scripts/openclaw-worker.ts",
+    "worker:openclaw": "tsx -r tsconfig-paths/register scripts/openclaw-worker.ts",
     "test": "vitest run"
   },
   "dependencies": {
@@ -48,6 +48,7 @@
     "recharts": "latest",
     "tailwind-merge": "latest",
     "tailwindcss-animate": "latest",
+    "tsconfig-paths": "^4.2.0",
     "tsx": "^4.22.1",
     "zod": "latest",
     "zustand": "latest"
