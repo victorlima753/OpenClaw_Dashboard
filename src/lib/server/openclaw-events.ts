@@ -51,11 +51,16 @@ function heartbeatStatus(agentId: string, payload: unknown): AgentStatus | undef
 
 function normalizeOpenClawAgent(agent: JsonRecord, fallbackId?: string, rootPayload?: unknown) {
   const id = stringValue(agent.id) ?? stringValue(agent.agentId) ?? stringValue(agent.slug) ?? fallbackId;
+  const scheduleStatus =
+    typeof agent.enabled === "boolean" ? (agent.enabled ? "online" : "offline") : undefined;
   return {
     externalId: id,
     slug: stringValue(agent.slug) ?? stringValue(agent.name) ?? id,
     name: stringValue(agent.name) ?? stringValue(agent.label) ?? stringValue(agent.slug) ?? id,
-    status: normalizeStatus(agent.status ?? agent.state ?? agent.presence, agentStatuses) ?? (id ? heartbeatStatus(id, rootPayload) : undefined),
+    status:
+      normalizeStatus(agent.status ?? agent.state ?? agent.presence, agentStatuses) ??
+      (id ? heartbeatStatus(id, rootPayload) : undefined) ??
+      scheduleStatus,
     currentTaskId: stringValue(agent.currentTaskId) ?? stringValue(agent.jobId) ?? stringValue(agent.job_id),
     raw: agent
   };
@@ -80,6 +85,12 @@ export function extractOpenClawAgents(payload: unknown) {
           .map(([agentId, agent]) => (isRecord(agent) ? normalizeOpenClawAgent(agent, agentId, rootPayload) : null))
           .filter((agent) => agent !== null)
       : [];
+  const heartbeatAgents =
+    isRecord(rootPayload) && isRecord(rootPayload.heartbeat) && Array.isArray(rootPayload.heartbeat.agents)
+      ? rootPayload.heartbeat.agents
+          .filter(isRecord)
+          .map((agent) => normalizeOpenClawAgent(agent, stringValue(agent.agentId), rootPayload))
+      : [];
 
   const arrayAgents = candidateArrays(payload)
     .flat()
@@ -88,7 +99,7 @@ export function extractOpenClawAgents(payload: unknown) {
     .filter((agent) => agent.externalId || agent.slug || agent.name);
 
   const agentsById = new Map<string, (typeof arrayAgents)[number]>();
-  for (const agent of [...mappedAgents, ...arrayAgents]) {
+  for (const agent of [...mappedAgents, ...heartbeatAgents, ...arrayAgents]) {
     const key = agent.externalId ?? agent.slug ?? agent.name;
     if (key) agentsById.set(key, agent);
   }

@@ -25,4 +25,26 @@ describe("extractOpenClawAgents", () => {
       ])
     );
   });
+
+  it("reads the Gateway heartbeat agents array", () => {
+    const agents = extractOpenClawAgents({
+      type: "res",
+      ok: true,
+      payload: {
+        heartbeat: {
+          agents: [
+            { agentId: "orchestrator", enabled: false, every: "disabled" },
+            { agentId: "writer", enabled: true, every: "30m" }
+          ]
+        }
+      }
+    });
+
+    expect(agents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ externalId: "orchestrator", status: "offline" }),
+        expect.objectContaining({ externalId: "writer", status: "online" })
+      ])
+    );
+  });
 });
