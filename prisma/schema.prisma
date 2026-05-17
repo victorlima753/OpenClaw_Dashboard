@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AgentStatus {
+  online
+  idle
+  busy
+  paused
+  offline
+  error
+}
+
+enum JobStatus {
+  new
+  researching
+  relevance_scoring
+  clustering
+  validating
+  writing
+  seo_optimizing
+  affiliate_routing
+  copywriting
+  editing
+  compliance_checking
+  publishing
+  drafted
+  published
+  human_review
+  discarded
+  failed
+}
+
+enum JobPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum LogSeverity {
+  info
+  warning
+  error
+  critical
+}
+
+enum ReviewStatus {
+  pending
+  approved
+  rejected
+  returned_to_writer
+  returned_to_validator
+}
+
+enum AuditEventType {
+  job_created
+  relevance_scored
+  validation_completed
+  article_written
+  seo_completed
+  affiliate_decided
+  compliance_completed
+  wordpress_payload_created
+  published
+  drafted
+  failed
+  human_review_requested
+  prompt_injection_detected
+  task_status_changed
+  task_retried
+  task_cancelled
+  task_assigned
+  priority_changed
+  agent_paused
+  agent_resumed
+  agent_heartbeat
+  review_approved
+  review_rejected
+  returned_to_writer
+  returned_to_validator
+  webhook_received
+  errors_cleared
+  agent_restarted
+}
+
+model Agent {
+  id                      String       @id @default(cuid())
+  name                    String
+  slug                    String       @unique
+  description             String
+  skillName               String
+  status                  AgentStatus  @default(idle)
+  currentTaskId           String?
+  lastHeartbeatAt         DateTime?
+  lastActivityAt          DateTime?
+  totalTasksProcessed     Int          @default(0)
+  successCount            Int          @default(0)
+  failureCount            Int          @default(0)
+  averageProcessingTimeMs Int          @default(0)
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+  assignedJobs            ArticleJob[]
+  logs                    AgentLog[]
+  payloadSnapshots        PayloadSnapshot[]
+
+  @@index([status])
+  @@index([slug])
+}
+
+model ArticleJob {
+  id                    String          @id @default(cuid())
+  jobId                 String          @unique
+  title                 String
+  topic                 String
+  category              String
+  sourceName            String
+  sourceUrl             String
+  clusterId             String?
+  currentStage          String
+  status                JobStatus       @default(new)
+  priority              JobPriority     @default(normal)
+  assignedAgentId       String?
+  assignedAgent         Agent?          @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  relevanceScore        Int?
+  validationScore       Int?
+  editorialScore        Int?
+  seoScore              Int?
+  complianceScore       Int?
+  monetizationScore     Int?
+  hasAffiliate          Boolean         @default(false)
+  requiresHumanReview   Boolean         @default(false)
+  wordpressPostId       String?
+  wordpressPreviewUrl   String?
+  errorMessage          String?
+  articleMarkdown       String?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  logs                  AgentLog[]
+  payloadSnapshots      PayloadSnapshot[]
+  sources               Source[]
+  humanReviews          HumanReview[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([assignedAgentId])
+  @@index([createdAt])
+}
+
+model AgentLog {
+  id            String         @id @default(cuid())
+  jobId         String?
+  job           ArticleJob?    @relation(fields: [jobId], references: [jobId], onDelete: Cascade)
+  agentId       String?
+  agent         Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  eventType     AuditEventType
+  severity      LogSeverity    @default(info)
+  stage         String?
+  decision      String?
+  score         Int?
+  message       String
+  inputPayload  Json?
+  outputPayload Json?
+  errorPayload  Json?
+  createdAt     DateTime       @default(now())
+
+  @@index([jobId])
+  @@index([agentId])
+  @@index([eventType])
+  @@index([severity])
+  @@index([createdAt])
+}
+
+model PayloadSnapshot {
+  id            String      @id @default(cuid())
+  jobId         String
+  job           ArticleJob  @relation(fields: [jobId], references: [jobId], onDelete: Cascade)
+  stage         String
+  agentId       String?
+  agent         Agent?      @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  inputPayload  Json
+  outputPayload Json
+  inputHash     String
+  outputHash    String
+  createdAt     DateTime    @default(now())
+
+  @@index([jobId])
+  @@index([stage])
+  @@index([agentId])
+}
+
+model Source {
+  id               String     @id @default(cuid())
+  jobId            String
+  job              ArticleJob @relation(fields: [jobId], references: [jobId], onDelete: Cascade)
+  name             String
+  url              String
+  role             String
+  reliabilityScore Int
+  publishedAt      DateTime?
+  createdAt        DateTime   @default(now())
+
+  @@index([jobId])
+  @@index([role])
+}
+
+model HumanReview {
+  id              String       @id @default(cuid())
+  jobId           String
+  job             ArticleJob   @relation(fields: [jobId], references: [jobId], onDelete: Cascade)
+  status          ReviewStatus @default(pending)
+  reason          String
+  reviewerComment String?
+  decision        String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([jobId])
+  @@index([status])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
