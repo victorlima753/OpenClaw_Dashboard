@@ -18,18 +18,21 @@ export async function POST(request: NextRequest) {
 
   try {
     const counts = await prisma.$transaction(async (tx) => {
-      const payloadSnapshots = await tx.payloadSnapshot.deleteMany();
-      const humanReviews = await tx.humanReview.deleteMany();
-      const sources = await tx.source.deleteMany();
-      const agentLogs = await tx.agentLog.deleteMany();
-      const articleJobs = await tx.articleJob.deleteMany();
+      const demoJobs = await tx.articleJob.findMany({
+        where: { dataSource: "seed" },
+        select: { jobId: true }
+      });
+      const demoJobIds = demoJobs.map((job) => job.jobId);
+      const jobFilter = { in: demoJobIds };
+      const payloadSnapshots = await tx.payloadSnapshot.deleteMany({ where: { jobId: jobFilter } });
+      const humanReviews = await tx.humanReview.deleteMany({ where: { jobId: jobFilter } });
+      const sources = await tx.source.deleteMany({ where: { jobId: jobFilter } });
+      const agentLogs = await tx.agentLog.deleteMany({ where: { jobId: jobFilter } });
+      const articleJobs = await tx.articleJob.deleteMany({ where: { dataSource: "seed" } });
       const agents = await tx.agent.updateMany({
+        where: { currentTaskId: jobFilter },
         data: {
-          currentTaskId: null,
-          totalTasksProcessed: 0,
-          successCount: 0,
-          failureCount: 0,
-          averageProcessingTimeMs: 0
+          currentTaskId: null
         }
       });
 
@@ -39,7 +42,8 @@ export async function POST(request: NextRequest) {
         payloadSnapshots: payloadSnapshots.count,
         sources: sources.count,
         humanReviews: humanReviews.count,
-        agentsReset: agents.count
+        agentsReset: agents.count,
+        scope: "seed"
       };
     });
 
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
       severity: "warning",
       stage: "Admin",
       decision: "clear_demo_data",
-      message: "Dados demo removidos pelo administrador.",
+      message: "Dados demo/seed removidos pelo administrador; jobs reais OpenClaw e manuais foram preservados.",
       outputPayload: counts
     });
 

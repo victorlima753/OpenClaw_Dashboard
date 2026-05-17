@@ -32,12 +32,15 @@ export type AgentDto = {
   id: string;
   name: string;
   slug: string;
+  externalId: string | null;
   description: string;
   skillName: string;
   status: AgentStatus;
   currentTaskId: string | null;
   lastHeartbeatAt: string | null;
   lastActivityAt: string | null;
+  lastOpenClawSyncAt: string | null;
+  openClawEnabled: boolean | null;
   totalTasksProcessed: number;
   successCount: number;
   failureCount: number;
@@ -53,6 +56,8 @@ export type AgentDto = {
 export type ArticleJobDto = {
   id: string;
   jobId: string;
+  externalId: string | null;
+  dataSource: string;
   title: string;
   topic: string;
   category: string;
@@ -163,6 +168,42 @@ export type DashboardStats = {
     lastSeenAt: string | null;
     lastMessage: string | null;
   };
+};
+
+export type OpenClawOverview = {
+  gateway: {
+    realEnabled: boolean;
+    connected: boolean;
+    label: string;
+    lastSeenAt: string | null;
+    lastMessage: string | null;
+  };
+  worker: {
+    connected: boolean;
+    lastSeenAt: string | null;
+    lastMessage: string | null;
+  };
+  agents: {
+    mapped: number;
+    unmappedExternalIds: string[];
+    rows: {
+      id: string;
+      name: string;
+      slug: string;
+      externalId: string | null;
+      openClawEnabled: boolean | null;
+      status: AgentStatus;
+      lastOpenClawSyncAt: string | null;
+      lastActivityAt: string | null;
+    }[];
+  };
+  jobs: {
+    openClaw: number;
+    seed: number;
+    manual: number;
+    latest: ArticleJobDto[];
+  };
+  recentLogs: AgentLogDto[];
 };
 
 export type RealtimeEvent = {

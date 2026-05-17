@@ -22,6 +22,7 @@ export function useRealtime() {
       const event = JSON.parse(message.data) as RealtimeEvent;
       setEvents((current) => [event, ...current].slice(0, 8));
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["openclaw", "overview"] });
       if (event.type.includes("task")) queryClient.invalidateQueries({ queryKey: ["tasks"] });
       if (event.type === "agent_status") queryClient.invalidateQueries({ queryKey: ["agents"] });
       if (event.type === "audit_log" || event.type === "critical_error") {

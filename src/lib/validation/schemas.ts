@@ -110,4 +110,38 @@ export const webhookEventSchema = z.object({
   payload: z.unknown().optional()
 });
 
+export const openClawJobPayloadSchema = z
+  .object({
+    jobId: z.string().optional(),
+    job_id: z.string().optional(),
+    externalId: z.string().optional(),
+    external_id: z.string().optional(),
+    title: z.string().optional(),
+    topic: z.string().optional(),
+    category: z.string().optional(),
+    sourceName: z.string().optional(),
+    source_name: z.string().optional(),
+    sourceUrl: z.string().url().optional(),
+    source_url: z.string().url().optional(),
+    status: jobStatusSchema.optional(),
+    currentStage: z.string().optional(),
+    current_stage: z.string().optional(),
+    priority: prioritySchema.optional(),
+    agentId: z.string().optional(),
+    agent_id: z.string().optional(),
+    relevanceScore: z.number().int().min(0).max(100).optional(),
+    relevance_score: z.number().int().min(0).max(100).optional(),
+    validationScore: z.number().int().min(0).max(100).optional(),
+    validation_score: z.number().int().min(0).max(100).optional(),
+    complianceScore: z.number().int().min(0).max(100).nullable().optional(),
+    compliance_score: z.number().int().min(0).max(100).nullable().optional(),
+    hasAffiliate: z.boolean().optional(),
+    has_affiliate: z.boolean().optional(),
+    requiresHumanReview: z.boolean().optional(),
+    requires_human_review: z.boolean().optional(),
+    outputPayload: z.unknown().optional(),
+    output_payload: z.unknown().optional()
+  })
+  .passthrough();
+
 export const settingsUpdateSchema = z.record(z.string(), z.unknown());

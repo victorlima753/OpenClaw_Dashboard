@@ -9,6 +9,7 @@ import {
   Columns3,
   LayoutDashboard,
   ListChecks,
+  RadioTower,
   Settings,
   ShieldCheck
 } from "lucide-react";
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/queue", label: "Queue", icon: ListChecks },
   { href: "/review", label: "Human Review", icon: ClipboardCheck },
   { href: "/audit", label: "Audit", icon: ShieldCheck },
+  { href: "/openclaw", label: "OpenClaw", icon: RadioTower },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 
@@ -60,8 +62,8 @@ export function Sidebar() {
           })}
         </nav>
         <div className="border-t p-4 text-xs text-muted-foreground">
-          <p>V1 mockada</p>
-          <p>OpenClaw, N8N e WordPress via adapters.</p>
+          <p>V1 operacional</p>
+          <p>OpenClaw real via Gateway e worker.</p>
         </div>
       </div>
     </aside>

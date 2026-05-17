@@ -1,4 +1,4 @@
-import { handleOpenClawGatewayMessage } from "../src/lib/server/openclaw-events";
+import { handleOpenClawGatewayMessage, markOpenClawWorkerSeen } from "../src/lib/server/openclaw-events";
 import { prisma } from "../src/lib/prisma";
 import {
   buildConnectRequest,
@@ -61,6 +61,9 @@ async function connect() {
             return;
           }
           console.log("[openclaw-worker] conectado e autenticado no Gateway.");
+          markOpenClawWorkerSeen("Worker conectado e autenticado no Gateway.").catch((error) => {
+            console.error("[openclaw-worker] falha ao registrar heartbeat:", error);
+          });
           sendStatusProbe();
           heartbeat = setInterval(sendStatusProbe, 30_000);
           return;
@@ -68,6 +71,10 @@ async function connect() {
 
         handleOpenClawGatewayMessage(message).catch((error) => {
           console.error("[openclaw-worker] falha ao persistir evento:", error);
+        }).finally(() => {
+          markOpenClawWorkerSeen("Worker recebeu evento do Gateway.").catch((error) => {
+            console.error("[openclaw-worker] falha ao registrar heartbeat:", error);
+          });
         });
       });
 

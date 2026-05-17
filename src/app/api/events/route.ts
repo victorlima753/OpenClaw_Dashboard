@@ -5,6 +5,14 @@ import { isMockFallbackEnabled } from "@/lib/server/mock-store";
 
 export const dynamic = "force-dynamic";
 
+function realtimeTypeFromLog(log: { eventType: string; severity: string; jobId: string | null; agentId: string | null }) {
+  if (log.severity === "critical" || log.severity === "error") return "critical_error";
+  if (["published", "drafted"].includes(log.eventType)) return "task_completed";
+  if (log.jobId) return "task_update";
+  if (log.agentId || log.eventType.startsWith("agent_")) return "agent_status";
+  return "audit_log";
+}
+
 export async function GET(request: Request) {
   const encoder = new TextEncoder();
   const useMockStream = isMockFallbackEnabled() && !isRealOpenClawEnabled() && process.env.NODE_ENV !== "production";
@@ -34,12 +42,19 @@ export async function GET(request: Request) {
           where: { createdAt: { gt: lastSeen } },
           orderBy: { createdAt: "asc" },
           take: 20,
-          include: { agent: { select: { id: true, name: true, slug: true } } }
+          include: {
+            agent: { select: { id: true, name: true, slug: true } },
+            job: { select: { jobId: true, title: true, status: true } }
+          }
         });
+
+        if (logs.length === 0) {
+          controller.enqueue(encoder.encode(`: heartbeat ${new Date().toISOString()}\n\n`));
+        }
 
         for (const log of logs) {
           lastSeen = log.createdAt;
-          const type = log.severity === "critical" || log.severity === "error" ? "critical_error" : "audit_log";
+          const type = realtimeTypeFromLog(log);
           const event = {
             type,
             message: log.message,
@@ -52,9 +67,11 @@ export async function GET(request: Request) {
       };
 
       send().catch(() => {
-        const event = mockRealtimeAdapter.nextEvent();
-        controller.enqueue(encoder.encode(`event: ${event.type}\n`));
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        if (useMockStream) {
+          const event = mockRealtimeAdapter.nextEvent();
+          controller.enqueue(encoder.encode(`event: ${event.type}\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        }
       });
       const interval = setInterval(() => {
         send().catch((error) => {

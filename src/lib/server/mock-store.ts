@@ -69,9 +69,12 @@ class MockStore {
     this.agents = seedAgents.map((agent, index) => ({
       ...agent,
       id: agentIds.get(agent.slug),
+      externalId: null,
       currentTaskId: agent.currentTaskId ?? null,
       lastHeartbeatAt: iso(new Date(Date.now() - (index + 1) * 90_000)),
       lastActivityAt: iso(new Date(Date.now() - (index + 2) * 120_000)),
+      lastOpenClawSyncAt: null,
+      openClawEnabled: null,
       createdAt: iso(new Date("2026-05-17T09:00:00.000Z")),
       updatedAt: now()
     }));
@@ -79,6 +82,8 @@ class MockStore {
     this.jobs = seedJobs.map((job) => ({
       ...job,
       id: `job-${job.jobId}`,
+      externalId: null,
+      dataSource: "seed",
       assignedAgentId: job.assignedAgentSlug ? agentIds.get(job.assignedAgentSlug) ?? null : null,
       assignedAgentSlug: undefined,
       clusterId: job.clusterId ?? null,
@@ -316,6 +321,8 @@ class MockStore {
     const job = {
       id: `job-${jobId}`,
       jobId,
+      externalId: jobId,
+      dataSource: "manual",
       ...body,
       clusterId: null,
       currentStage: "Entrada",

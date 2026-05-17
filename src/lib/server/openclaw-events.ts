@@ -57,6 +57,24 @@ function reverseAgentMap() {
   return Object.fromEntries(Object.entries(agentMap()).map(([dashboardSlug, externalId]) => [externalId, dashboardSlug]));
 }
 
+function commandMap() {
+  try {
+    const raw = process.env.OPENCLAW_COMMAND_MAP_JSON;
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function externalAgentIdForSlug(slug?: string | null) {
+  if (!slug) return undefined;
+  return agentMap()[slug] ?? slug;
+}
+
+function externalAgentIdForAgent(agent?: Pick<Agent, "slug" | "externalId"> | null) {
+  return agent?.externalId ?? externalAgentIdForSlug(agent?.slug);
+}
+
 function rootOpenClawPayload(payload: unknown) {
   return isRecord(payload) && isRecord(payload.payload) ? payload.payload : payload;
 }
@@ -274,6 +292,13 @@ function findJobPayload(payload: unknown): JsonRecord | null {
   return null;
 }
 
+function externalJobId(payloadRecord: JsonRecord | null | undefined, fallbackJobId?: string) {
+  return (
+    firstString(payloadRecord, ["externalId", "external_id", "openClawJobId", "openclaw_job_id", "taskId", "task_id"]) ??
+    fallbackJobId
+  );
+}
+
 export async function syncOpenClawAgentsFromPayload(payload: unknown) {
   const externalAgents = extractOpenClawAgents(payload);
   const activities = extractOpenClawAgentActivities(payload);
@@ -298,10 +323,13 @@ export async function syncOpenClawAgentsFromPayload(payload: unknown) {
     await prisma.agent.update({
       where: { id: dashboardAgent.id },
       data: {
+        externalId: match.externalId ?? mappedExternalId ?? dashboardAgent.externalId,
+        openClawEnabled: booleanValue(match.raw.enabled),
         status: match.status ?? "online",
         currentTaskId: match.currentTaskId ?? dashboardAgent.currentTaskId,
         lastHeartbeatAt: new Date(),
-        lastActivityAt: new Date()
+        lastActivityAt: new Date(),
+        lastOpenClawSyncAt: new Date()
       }
     });
     updated += 1;
@@ -318,7 +346,9 @@ export async function syncOpenClawAgentsFromPayload(payload: unknown) {
       data: {
         status: ageMs >= 0 && ageMs < 5 * 60_000 ? "busy" : undefined,
         lastActivityAt: activityAt,
-        lastHeartbeatAt: new Date()
+        lastHeartbeatAt: new Date(),
+        lastOpenClawSyncAt: new Date(),
+        externalId: activity.externalId
       }
     });
 
@@ -379,6 +409,28 @@ export async function syncOpenClawAgentsFromPayload(payload: unknown) {
   }
 
   return { updated, discovered: externalAgents.length, sessionsDiscovered: activities.length, activitiesRecorded };
+}
+
+export async function markOpenClawWorkerSeen(message = "Worker OpenClaw ativo.") {
+  const now = new Date().toISOString();
+  await prisma.systemSetting.upsert({
+    where: { key: "openclaw_worker_status" },
+    create: {
+      key: "openclaw_worker_status",
+      value: {
+        connected: true,
+        lastSeenAt: now,
+        message
+      }
+    },
+    update: {
+      value: {
+        connected: true,
+        lastSeenAt: now,
+        message
+      }
+    }
+  });
 }
 
 export async function applyOpenClawAgentEvent(input: {
@@ -452,11 +504,14 @@ export async function applyOpenClawTaskUpdate(input: {
     const currentStage = explicitStage ?? JOB_STATUS_META[effectiveStatus].stage;
     const priority = normalizeStatus(firstPayloadValue(payloadRecord, ["priority"]), priorities);
     const articleMarkdown = firstString(payloadRecord, ["articleMarkdown", "article_markdown", "article", "content", "body"]);
+    const openClawExternalId = externalJobId(payloadRecord, jobId);
 
     const job = await prisma.articleJob.upsert({
       where: { jobId },
       create: {
         jobId,
+        externalId: openClawExternalId,
+        dataSource: "openclaw",
         title,
         topic,
         category,
@@ -486,6 +541,8 @@ export async function applyOpenClawTaskUpdate(input: {
         articleMarkdown
       },
       update: {
+        externalId: openClawExternalId ?? undefined,
+        dataSource: "openclaw",
         status: status ?? undefined,
         currentStage: status ? JOB_STATUS_META[status].stage : explicitStage ?? undefined,
         assignedAgentId: agent?.id ?? undefined,
@@ -603,7 +660,25 @@ export async function dispatchOpenClawCommand(input: {
   agentId?: string | null;
 }) {
   try {
-    const result = await getOpenClawAdapter().sendCommand({ type: input.type, payload: input.payload });
+    const type = commandMap()[input.type] ?? input.type;
+    const agent = input.agentId
+      ? await prisma.agent.findUnique({ where: { id: input.agentId }, select: { id: true, slug: true, externalId: true } })
+      : null;
+    const agentExternalId = externalAgentIdForAgent(agent);
+    const payload = {
+      ...input.payload,
+      ...(agentExternalId
+        ? {
+            agentId: agentExternalId,
+            agentExternalId,
+            dashboardAgentId: agent?.id,
+            agentSlug: agent?.slug
+          }
+        : {}),
+      ...(input.jobId ? { jobId: input.jobId } : {}),
+      source: input.payload.source ?? "techsouls-command-center"
+    };
+    const result = await getOpenClawAdapter().sendCommand({ type, payload: { ...payload, action: input.type } });
     return result;
   } catch (error) {
     await createAuditLog({

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import type { AgentDto, AgentLogDto, ArticleJobDto, DashboardStats, HumanReviewDto } from "@/lib/types";
+import type { AgentDto, AgentLogDto, ArticleJobDto, DashboardStats, HumanReviewDto, OpenClawOverview } from "@/lib/types";
 
 export function useDashboard() {
   return useQuery({ queryKey: ["dashboard"], queryFn: () => apiFetch<DashboardStats>("/api/dashboard") });
@@ -42,6 +42,36 @@ export function useReviewQueue() {
 
 export function useAuditLogs() {
   return useQuery({ queryKey: ["audit"], queryFn: () => apiFetch<AgentLogDto[]>("/api/audit") });
+}
+
+export function useOpenClawOverview() {
+  return useQuery({
+    queryKey: ["openclaw", "overview"],
+    queryFn: () => apiFetch<OpenClawOverview>("/api/openclaw/diagnostics")
+  });
+}
+
+export function useCreateTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      title: string;
+      topic: string;
+      category: string;
+      sourceName: string;
+      sourceUrl: string;
+      priority: string;
+      hasAffiliate: boolean;
+      requiresHumanReview: boolean;
+    }) => apiFetch<ArticleJobDto>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+      queryClient.invalidateQueries({ queryKey: ["openclaw", "overview"] });
+    }
+  });
 }
 
 export function useAgentAction(agentId: string) {

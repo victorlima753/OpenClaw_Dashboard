@@ -55,6 +55,8 @@ export async function POST(request: NextRequest) {
     const job = await prisma.articleJob.create({
       data: {
         jobId,
+        externalId: jobId,
+        dataSource: "manual",
         title: body.title,
         topic: body.topic,
         category: body.category,
@@ -78,9 +80,9 @@ export async function POST(request: NextRequest) {
     });
 
     await dispatchOpenClawCommand({
-      type: "job_created",
+      type: "job_create",
       jobId,
-      payload: { ...body, jobId, source: "techsouls-command-center" }
+      payload: { ...body, jobId, dispatchTo: "orchestrator", source: "techsouls-command-center" }
     });
 
     return NextResponse.json(job, { status: 201 });

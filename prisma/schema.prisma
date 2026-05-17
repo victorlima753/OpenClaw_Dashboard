@@ -92,12 +92,15 @@ model Agent {
   id                      String       @id @default(cuid())
   name                    String
   slug                    String       @unique
+  externalId              String?
   description             String
   skillName               String
   status                  AgentStatus  @default(idle)
   currentTaskId           String?
   lastHeartbeatAt         DateTime?
   lastActivityAt          DateTime?
+  lastOpenClawSyncAt      DateTime?
+  openClawEnabled         Boolean?
   totalTasksProcessed     Int          @default(0)
   successCount            Int          @default(0)
   failureCount            Int          @default(0)
@@ -110,11 +113,14 @@ model Agent {
 
   @@index([status])
   @@index([slug])
+  @@index([externalId])
 }
 
 model ArticleJob {
   id                    String          @id @default(cuid())
   jobId                 String          @unique
+  externalId            String?
+  dataSource            String          @default("seed")
   title                 String
   topic                 String
   category              String
@@ -148,6 +154,8 @@ model ArticleJob {
   @@index([status])
   @@index([priority])
   @@index([assignedAgentId])
+  @@index([dataSource])
+  @@index([externalId])
   @@index([createdAt])
 }
 

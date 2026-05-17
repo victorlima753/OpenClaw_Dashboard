@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Save, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, RefreshCw, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -81,7 +82,7 @@ export function SettingsPage() {
       invalidateOperationalQueries();
       const jobs = result.counts?.articleJobs ?? 0;
       const logs = result.counts?.agentLogs ?? 0;
-      setOperationMessage(`Dados demo limpos: ${jobs} jobs e ${logs} logs removidos.`);
+      setOperationMessage(`Dados demo/seed limpos: ${jobs} jobs e ${logs} logs removidos. Jobs OpenClaw foram preservados.`);
     },
     onError: (error) => setOperationMessage(error instanceof Error ? error.message : "Falha ao limpar dados demo.")
   });
@@ -97,7 +98,7 @@ export function SettingsPage() {
 
   const setValue = (key: string, value: unknown) => setDraft((current) => ({ ...current, [key]: value }));
   const clearDemoData = () => {
-    if (!window.confirm("Remover jobs, logs, payloads, fontes e revisoes demo do dashboard?")) return;
+    if (!window.confirm("Remover somente jobs, logs, payloads, fontes e revisoes de seed/demo? Jobs reais OpenClaw serao preservados.")) return;
     clearDemoMutation.mutate();
   };
 
@@ -122,7 +123,7 @@ export function SettingsPage() {
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-sm text-muted-foreground">
-              Sincronize agentes, sessoes recentes e novos jobs reais do Gateway.
+              Sincronize agentes, sessoes recentes e novos jobs reais do Gateway. Para diagnostico completo, abra a pagina OpenClaw.
             </p>
             {operationMessage ? <p className="mt-2 text-sm text-sky-300">{operationMessage}</p> : null}
           </div>
@@ -138,6 +139,11 @@ export function SettingsPage() {
             <Button variant="destructive" onClick={clearDemoData} disabled={clearDemoMutation.isPending}>
               <Trash2 />
               Limpar demo data
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/openclaw">
+                <ExternalLink /> Diagnostico
+              </Link>
             </Button>
           </div>
         </CardContent>

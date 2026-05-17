@@ -1,18 +1,33 @@
 "use client";
 
 import Link from "next/link";
+import { useState, type FormEvent } from "react";
 import { DndContext, type DragEndEvent, useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { ExternalLink, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
+import { ExternalLink, Plus, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { AgentStatusBadge, JobStatusBadge, PriorityBadge } from "@/components/common/status-badge";
 import { KANBAN_COLUMNS, PRIORITY_META } from "@/lib/domain";
-import { useTaskAction, useTasks } from "@/lib/api/hooks";
+import { useCreateTask, useTaskAction, useTasks } from "@/lib/api/hooks";
 import { formatRelativeTime } from "@/lib/utils";
 import { PageError, PageLoading } from "./page-state";
 import type { ArticleJobDto, JobPriority, JobStatus } from "@/lib/types";
+
+const initialNewTask = {
+  title: "",
+  topic: "",
+  category: "Tecnologia",
+  sourceName: "TechSouls Command Center",
+  sourceUrl: "https://techsouls.com.br/",
+  priority: "normal",
+  hasAffiliate: false,
+  requiresHumanReview: false
+};
 
 function TaskCard({ job, isAdmin }: { job: ArticleJobDto; isAdmin: boolean }) {
   const action = useTaskAction();
@@ -164,6 +179,9 @@ function KanbanColumn({
 export function TasksPage() {
   const { data, isLoading, error } = useTasks();
   const action = useTaskAction();
+  const createTask = useCreateTask();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [newTask, setNewTask] = useState(initialNewTask);
   const isAdmin = true;
 
   if (isLoading) return <PageLoading />;
@@ -184,6 +202,17 @@ export function TasksPage() {
       body: { status, reason: "Movido manualmente no Kanban admin." }
     });
   };
+  const setNewTaskValue = (key: keyof typeof initialNewTask, value: string | boolean) =>
+    setNewTask((current) => ({ ...current, [key]: value }));
+  const submitNewTask = (event: FormEvent) => {
+    event.preventDefault();
+    createTask.mutate(newTask, {
+      onSuccess: () => {
+        setDialogOpen(false);
+        setNewTask(initialNewTask);
+      }
+    });
+  };
 
   return (
     <div className="space-y-5">
@@ -194,8 +223,92 @@ export function TasksPage() {
             Movimento manual entre colunas fica ativo para administradores autenticados.
           </p>
         </div>
-        <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
-          Modo atual: <span className="font-medium text-foreground">Admin</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus /> Novo job
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Criar job editorial</DialogTitle>
+                <DialogDescription>
+                  Cria a tarefa no Postgres e envia um comando real `job_create` ao Orchestrator OpenClaw.
+                </DialogDescription>
+              </DialogHeader>
+              <form className="space-y-3" onSubmit={submitNewTask}>
+                <Input
+                  required
+                  placeholder="Titulo da pauta"
+                  value={newTask.title}
+                  onChange={(event) => setNewTaskValue("title", event.target.value)}
+                />
+                <Input
+                  required
+                  placeholder="Topico"
+                  value={newTask.topic}
+                  onChange={(event) => setNewTaskValue("topic", event.target.value)}
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    required
+                    placeholder="Categoria"
+                    value={newTask.category}
+                    onChange={(event) => setNewTaskValue("category", event.target.value)}
+                  />
+                  <Select value={newTask.priority} onValueChange={(value) => setNewTaskValue("priority", value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(PRIORITY_META).map(([priority, meta]) => (
+                        <SelectItem key={priority} value={priority}>
+                          {meta.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Input
+                  required
+                  placeholder="Fonte"
+                  value={newTask.sourceName}
+                  onChange={(event) => setNewTaskValue("sourceName", event.target.value)}
+                />
+                <Input
+                  required
+                  type="url"
+                  placeholder="URL da fonte"
+                  value={newTask.sourceUrl}
+                  onChange={(event) => setNewTaskValue("sourceUrl", event.target.value)}
+                />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                    Afiliado
+                    <Switch
+                      checked={newTask.hasAffiliate}
+                      onCheckedChange={(value) => setNewTaskValue("hasAffiliate", value)}
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                    Revisao humana
+                    <Switch
+                      checked={newTask.requiresHumanReview}
+                      onCheckedChange={(value) => setNewTaskValue("requiresHumanReview", value)}
+                    />
+                  </label>
+                </div>
+                {createTask.error ? <p className="text-sm text-red-300">{createTask.error.message}</p> : null}
+                <Button className="w-full" type="submit" disabled={createTask.isPending}>
+                  <Plus /> Criar e enviar
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+          <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
+            Modo atual: <span className="font-medium text-foreground">Admin</span>
+          </div>
         </div>
       </div>
 
