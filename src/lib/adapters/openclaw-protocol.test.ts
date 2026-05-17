@@ -21,9 +21,9 @@ describe("OpenClaw gateway protocol helpers", () => {
       id: "connect-id",
       method: "connect",
       params: {
-        minProtocol: 4,
+        minProtocol: 3,
         maxProtocol: 4,
-        client: { id: "gateway-client", mode: "backend" },
+        client: { id: "gateway-client", mode: "operator" },
         role: "operator",
         auth: { token: "token-123" }
       }

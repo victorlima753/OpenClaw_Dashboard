@@ -35,7 +35,8 @@ function protocolVersionRange() {
   const configured = process.env.OPENCLAW_PROTOCOL_VERSION;
   if (configured) {
     const protocol = Number(configured);
-    return { minProtocol: protocol, maxProtocol: protocol };
+    const minProtocol = Number(process.env.OPENCLAW_MIN_PROTOCOL_VERSION ?? 3);
+    return { minProtocol: Math.min(minProtocol, protocol), maxProtocol: protocol };
   }
   return { minProtocol: 3, maxProtocol: 4 };
 }
@@ -71,6 +72,9 @@ function optionalDevice(challenge: ConnectChallenge) {
 
 export function buildConnectRequest(id: string, challenge: ConnectChallenge) {
   const device = optionalDevice(challenge);
+  const configuredMode = process.env.OPENCLAW_CLIENT_MODE ?? "operator";
+  const clientMode = configuredMode === "backend" ? "operator" : configuredMode;
+
   return {
     type: "req",
     id,
@@ -81,7 +85,7 @@ export function buildConnectRequest(id: string, challenge: ConnectChallenge) {
         id: process.env.OPENCLAW_CLIENT_ID ?? "gateway-client",
         version: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0",
         platform: process.env.OPENCLAW_CLIENT_PLATFORM ?? "docker",
-        mode: process.env.OPENCLAW_CLIENT_MODE ?? "backend"
+        mode: clientMode
       },
       role: "operator",
       scopes: scopes(),

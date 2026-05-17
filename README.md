@@ -47,9 +47,10 @@ Secrets mínimos:
 - `OPENCLAW_GATEWAY_TOKEN`
 - `OPENCLAW_AUTH_MODE=query`
 - `OPENCLAW_PROTOCOL_VERSION=4`
+- `OPENCLAW_MIN_PROTOCOL_VERSION=3`
 - `OPENCLAW_OPERATOR_SCOPES=operator.read,operator.write,operator.admin,operator.approvals`
 - `OPENCLAW_CLIENT_ID=gateway-client`
-- `OPENCLAW_CLIENT_MODE=backend`
+- `OPENCLAW_CLIENT_MODE=operator`
 - `OPENCLAW_WEBHOOK_SECRET`
 - `OPENCLAW_AGENT_MAP_JSON`
 
