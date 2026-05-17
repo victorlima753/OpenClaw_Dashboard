@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isMockFallbackEnabled } from "@/lib/server/mock-store";
 import { isRealOpenClawEnabled } from "@/lib/adapters/openclaw";
+import { isDatabaseSetupError } from "@/lib/server/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -33,12 +34,33 @@ async function checkRedis() {
 }
 
 export async function GET() {
-  let database = { ok: false, message: "Nao verificado." };
+  let database = {
+    ok: false,
+    message: "Nao verificado.",
+    setupReady: false,
+    agentCount: null as number | null,
+    hint: null as string | null
+  };
   try {
     await prisma.$queryRaw`SELECT 1`;
-    database = { ok: true, message: "Postgres acessivel." };
+    const agentCount = await prisma.agent.count();
+    database = {
+      ok: true,
+      message: "Postgres acessivel e schema Prisma aplicado.",
+      setupReady: true,
+      agentCount,
+      hint: agentCount === 0 ? "Banco sem seed. Execute: npm run db:seed." : null
+    };
   } catch (error) {
-    database = { ok: false, message: error instanceof Error ? error.message : String(error) };
+    database = {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+      setupReady: false,
+      agentCount: null,
+      hint: isDatabaseSetupError(error)
+        ? "Confira DATABASE_URL e execute: npm run prisma:deploy && npm run db:seed."
+        : "Verifique os logs do container no EasyPanel."
+    };
   }
 
   const redis = await checkRedis();

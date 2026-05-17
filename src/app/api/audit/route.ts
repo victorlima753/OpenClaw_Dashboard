@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { auditCreateSchema } from "@/lib/validation/schemas";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { apiErrorResponse } from "@/lib/server/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
         headers: { "x-techsouls-data-source": "mock" }
       });
     }
-    throw error;
+    return apiErrorResponse(error, "api/audit:list");
   }
 }
 
@@ -52,6 +53,6 @@ export async function POST(request: NextRequest) {
         headers: { "x-techsouls-data-source": "mock" }
       });
     }
-    throw error;
+    return apiErrorResponse(error, "api/audit:create");
   }
 }

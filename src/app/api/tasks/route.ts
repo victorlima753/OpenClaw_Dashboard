@@ -4,6 +4,7 @@ import { createTaskSchema } from "@/lib/validation/schemas";
 import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
+import { apiErrorResponse } from "@/lib/server/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
         headers: { "x-techsouls-data-source": "mock" }
       });
     }
-    throw error;
+    return apiErrorResponse(error, "api/tasks:list");
   }
 }
 
@@ -90,6 +91,6 @@ export async function POST(request: NextRequest) {
         headers: { "x-techsouls-data-source": "mock" }
       });
     }
-    throw error;
+    return apiErrorResponse(error, "api/tasks:create");
   }
 }

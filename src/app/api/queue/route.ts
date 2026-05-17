@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { apiErrorResponse } from "@/lib/server/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,6 @@ export async function GET() {
     if (isDatabaseUnavailable(error)) {
       return NextResponse.json(mockStore.queue(), { headers: { "x-techsouls-data-source": "mock" } });
     }
-    throw error;
+    return apiErrorResponse(error, "api/queue");
   }
 }

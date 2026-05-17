@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { settingsUpdateSchema } from "@/lib/validation/schemas";
 import type { Prisma } from "@prisma/client";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { apiErrorResponse } from "@/lib/server/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export async function GET() {
     if (isDatabaseUnavailable(error)) {
       return NextResponse.json(mockStore.listSettings(), { headers: { "x-techsouls-data-source": "mock" } });
     }
-    throw error;
+    return apiErrorResponse(error, "api/settings:list");
   }
 }
 
@@ -38,6 +39,6 @@ export async function PATCH(request: NextRequest) {
     if (isDatabaseUnavailable(error)) {
       return NextResponse.json(mockStore.updateSettings(body), { headers: { "x-techsouls-data-source": "mock" } });
     }
-    throw error;
+    return apiErrorResponse(error, "api/settings:update");
   }
 }
