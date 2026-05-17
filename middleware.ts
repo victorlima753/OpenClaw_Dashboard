@@ -31,8 +31,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: "Sessao expirada ou ausente." }, { status: 401 });
   }
 
-  const loginUrl = request.nextUrl.clone();
-  loginUrl.pathname = "/login";
+  const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
   return NextResponse.redirect(loginUrl);
 }

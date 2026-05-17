@@ -33,7 +33,9 @@ export function LoginPage() {
       return;
     }
 
-    router.replace(searchParams.get("next") || "/dashboard");
+    const nextPath = searchParams.get("next");
+    const safeNextPath = nextPath?.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard";
+    router.replace(safeNextPath);
     router.refresh();
   };
 

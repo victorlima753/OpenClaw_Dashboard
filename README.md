@@ -49,6 +49,8 @@ Secrets mínimos:
 - `OPENCLAW_WEBHOOK_SECRET`
 - `OPENCLAW_AGENT_MAP_JSON`
 
+No EasyPanel, `ADMIN_USERNAME` e `ADMIN_PASSWORD` podem ser preenchidos com ou sem aspas. O app normaliza aspas externas e espaços acidentais para evitar erro de login quando o valor é copiado do `.env.example`.
+
 Comandos de release:
 
 ```sh
