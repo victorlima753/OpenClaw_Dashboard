@@ -1,6 +1,10 @@
-# TechSouls Command Center
+# OpenClaw Dashboard
 
-Painel operacional full stack para monitorar o pipeline multiagente do blog TechSouls.
+Ambiente de gestao dos agentes de IA da TechSouls.
+
+## TechSouls Command Center
+
+Painel operacional full stack para monitorar o pipeline multiagente editorial do blog TechSouls.
 
 ## Stack
 
