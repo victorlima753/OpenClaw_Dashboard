@@ -1,5 +1,13 @@
 import { handleOpenClawGatewayMessage } from "../src/lib/server/openclaw-events";
 import { prisma } from "../src/lib/prisma";
+import {
+  buildConnectRequest,
+  buildRpcRequest,
+  gatewayErrorMessage,
+  isConnectChallenge,
+  isGatewayResponse,
+  parseGatewayMessage
+} from "../src/lib/adapters/openclaw-protocol";
 
 function gatewayUrl() {
   const url = process.env.OPENCLAW_GATEWAY_WS_URL;
@@ -13,13 +21,6 @@ function gatewayUrl() {
   return parsed.toString();
 }
 
-function parseMessage(data: unknown) {
-  if (typeof data === "string") return JSON.parse(data) as unknown;
-  if (data instanceof ArrayBuffer) return JSON.parse(new TextDecoder().decode(data)) as unknown;
-  if (ArrayBuffer.isView(data)) return JSON.parse(new TextDecoder().decode(data)) as unknown;
-  return JSON.parse(String(data)) as unknown;
-}
-
 async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -29,28 +30,43 @@ async function connect() {
     throw new Error("Node.js 22+ e necessario para o worker WebSocket.");
   }
 
-  const token = process.env.OPENCLAW_GATEWAY_TOKEN;
-  const authMode = process.env.OPENCLAW_AUTH_MODE ?? "query";
   const reconnectMs = Number(process.env.OPENCLAW_WORKER_RECONNECT_MS ?? 5000);
 
   for (;;) {
     await new Promise<void>((resolve) => {
       const ws = new WebSocket(gatewayUrl());
       let heartbeat: NodeJS.Timeout | undefined;
+      const connectId = crypto.randomUUID();
+
+      const sendStatusProbe = () => {
+        ws.send(JSON.stringify(buildRpcRequest("status", crypto.randomUUID(), {})));
+      };
 
       ws.addEventListener("open", () => {
-        console.log("[openclaw-worker] conectado ao Gateway.");
-        if (token && authMode === "message") {
-          ws.send(JSON.stringify({ type: "auth", payload: { token }, timestamp: new Date().toISOString() }));
-        }
-        ws.send(JSON.stringify({ type: "status", payload: {}, timestamp: new Date().toISOString() }));
-        heartbeat = setInterval(() => {
-          ws.send(JSON.stringify({ type: "status", payload: {}, timestamp: new Date().toISOString() }));
-        }, 30_000);
+        console.log("[openclaw-worker] WebSocket aberto; aguardando challenge do Gateway.");
       });
 
       ws.addEventListener("message", (event) => {
-        handleOpenClawGatewayMessage(parseMessage(event.data)).catch((error) => {
+        const message = parseGatewayMessage(event.data);
+
+        if (isConnectChallenge(message)) {
+          ws.send(JSON.stringify(buildConnectRequest(connectId, message.payload ?? {})));
+          return;
+        }
+
+        if (isGatewayResponse(message, connectId)) {
+          if (!message.ok) {
+            console.error(`[openclaw-worker] handshake rejeitado: ${gatewayErrorMessage(message.error)}`);
+            ws.close();
+            return;
+          }
+          console.log("[openclaw-worker] conectado e autenticado no Gateway.");
+          sendStatusProbe();
+          heartbeat = setInterval(sendStatusProbe, 30_000);
+          return;
+        }
+
+        handleOpenClawGatewayMessage(message).catch((error) => {
           console.error("[openclaw-worker] falha ao persistir evento:", error);
         });
       });
