@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { JOB_STATUS_META, RUNNING_STATUSES } from "@/lib/domain";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { apiErrorResponse } from "@/lib/server/api-error";
+import { isRealOpenClawEnabled } from "@/lib/adapters/openclaw";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export async function GET() {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [agents, jobs, recentLogs, criticalAlerts] = await Promise.all([
+    const [agents, jobs, recentLogs, criticalAlerts, latestOpenClawLog] = await Promise.all([
       prisma.agent.findMany(),
       prisma.articleJob.findMany({ include: { assignedAgent: true } }),
       prisma.agentLog.findMany({
@@ -30,6 +31,11 @@ export async function GET() {
           agent: { select: { id: true, name: true, slug: true } },
           job: { select: { jobId: true, title: true, status: true } }
         }
+      }),
+      prisma.agentLog.findFirst({
+        where: { message: { contains: "OpenClaw", mode: "insensitive" } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, createdAt: true, message: true, severity: true }
       })
     ]);
 
@@ -57,6 +63,13 @@ export async function GET() {
         return acc;
       }, {})
     ).map(([agent, total]) => ({ agent, total }));
+    const latestOpenClawActivityAt = latestOpenClawLog?.createdAt.getTime() ?? 0;
+    const openClawLastSeenAt =
+      latestOpenClawActivityAt > 0 ? new Date(latestOpenClawActivityAt).toISOString() : null;
+    const openClawConnected =
+      isRealOpenClawEnabled() &&
+      latestOpenClawActivityAt > 0 &&
+      Date.now() - latestOpenClawActivityAt < 10 * 60_000;
 
     return NextResponse.json({
       totalAgents: agents.length,
@@ -75,7 +88,19 @@ export async function GET() {
       tasksByStatus,
       tasksByAgent,
       recentLogs,
-      criticalAlerts
+      criticalAlerts,
+      openClaw: {
+        realEnabled: isRealOpenClawEnabled(),
+        connected: openClawConnected,
+        status: !isRealOpenClawEnabled() ? "disabled" : openClawConnected ? "connected" : "stale",
+        label: !isRealOpenClawEnabled()
+          ? "OpenClaw real desativado"
+          : openClawConnected
+            ? "OpenClaw real conectado"
+            : "OpenClaw real aguardando sync",
+        lastSeenAt: openClawLastSeenAt,
+        lastMessage: latestOpenClawLog?.message ?? null
+      }
     });
   } catch (error) {
     if (isDatabaseUnavailable(error)) {

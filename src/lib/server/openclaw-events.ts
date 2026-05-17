@@ -1,13 +1,16 @@
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { JOB_STATUS_META } from "@/lib/domain";
 import { getOpenClawAdapter } from "@/lib/adapters/openclaw";
 import { createAuditLog } from "@/lib/server/audit";
-import type { AgentStatus, JobStatus, LogSeverity } from "@/lib/types";
+import type { AgentStatus, JobPriority, JobStatus, LogSeverity } from "@/lib/types";
+import type { Agent, Prisma } from "@prisma/client";
 
 type JsonRecord = Record<string, unknown>;
 
 const agentStatuses: AgentStatus[] = ["online", "idle", "busy", "paused", "offline", "error"];
 const jobStatuses = Object.keys(JOB_STATUS_META) as JobStatus[];
+const priorities: JobPriority[] = ["low", "normal", "high", "urgent"];
 const severities: LogSeverity[] = ["info", "warning", "error", "critical"];
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -20,6 +23,15 @@ function stringValue(value: unknown) {
 
 function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : undefined;
+}
+
+function booleanValue(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.toLowerCase();
+  if (["true", "1", "yes", "sim"].includes(normalized)) return true;
+  if (["false", "0", "no", "nao"].includes(normalized)) return false;
+  return undefined;
 }
 
 function recordEntries(value: unknown) {
@@ -39,6 +51,102 @@ function agentMap() {
   } catch {
     return {};
   }
+}
+
+function reverseAgentMap() {
+  return Object.fromEntries(Object.entries(agentMap()).map(([dashboardSlug, externalId]) => [externalId, dashboardSlug]));
+}
+
+function rootOpenClawPayload(payload: unknown) {
+  return isRecord(payload) && isRecord(payload.payload) ? payload.payload : payload;
+}
+
+function stableJson(value: unknown) {
+  return JSON.stringify(value ?? null);
+}
+
+function jsonHash(value: unknown) {
+  return createHash("sha256").update(stableJson(value)).digest("hex");
+}
+
+function asJson(value: unknown) {
+  return (value ?? null) as Prisma.InputJsonValue;
+}
+
+function dateValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return new Date(value);
+  if (typeof value === "string") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? undefined : date;
+  }
+  return undefined;
+}
+
+function nestedJobRecord(record: JsonRecord | null | undefined) {
+  return isRecord(record?.job) ? record.job : undefined;
+}
+
+function firstPayloadValue(record: JsonRecord | null | undefined, keys: string[]) {
+  if (!record) return undefined;
+  const nestedJob = nestedJobRecord(record);
+  for (const key of keys) {
+    if (record[key] !== undefined) return record[key];
+    if (nestedJob?.[key] !== undefined) return nestedJob[key];
+  }
+  return undefined;
+}
+
+function firstString(record: JsonRecord | null | undefined, keys: string[]) {
+  return stringValue(firstPayloadValue(record, keys));
+}
+
+function firstNumber(record: JsonRecord | null | undefined, keys: string[]) {
+  return numberValue(firstPayloadValue(record, keys));
+}
+
+function statusFromEvent(event: string) {
+  const normalized = event.toLowerCase().replaceAll("-", "_").replaceAll(".", "_");
+  if ((jobStatuses as string[]).includes(normalized)) return normalized as JobStatus;
+  if (normalized.includes("human_review")) return "human_review";
+  if (normalized.includes("publish") && !normalized.includes("payload")) return "published";
+  if (normalized.includes("draft")) return "drafted";
+  if (normalized.includes("fail") || normalized.includes("error")) return "failed";
+  if (normalized.includes("seo")) return "seo_optimizing";
+  if (normalized.includes("affiliate")) return "affiliate_routing";
+  if (normalized.includes("compliance")) return "compliance_checking";
+  if (normalized.includes("validat")) return "validating";
+  if (normalized.includes("writ")) return "writing";
+  if (normalized.includes("cluster") || normalized.includes("dedup")) return "clustering";
+  if (normalized.includes("relevance")) return "relevance_scoring";
+  if (normalized.includes("research")) return "researching";
+  if (normalized.includes("created") || normalized.includes("queued")) return "new";
+  return undefined;
+}
+
+function candidateAgentKeys(input?: string | null) {
+  const map = agentMap();
+  const reverseMap = reverseAgentMap();
+  const candidates = new Set<string>();
+  if (input) candidates.add(input);
+  if (input && reverseMap[input]) candidates.add(reverseMap[input]);
+  if (input && map[input]) candidates.add(map[input]);
+  return [...candidates].filter(Boolean);
+}
+
+function matchesDashboardAgent(agent: Agent, externalKey?: string | null) {
+  if (!externalKey) return false;
+  const keys = candidateAgentKeys(externalKey).map((value) => value.toLowerCase());
+  return keys.includes(agent.slug.toLowerCase()) || keys.includes(agent.name.toLowerCase());
+}
+
+async function findDashboardAgent(externalKey?: string | null) {
+  if (!externalKey) return null;
+  const keys = candidateAgentKeys(externalKey);
+  return prisma.agent.findFirst({
+    where: {
+      OR: keys.flatMap((key) => [{ slug: key }, { name: key }])
+    }
+  });
 }
 
 function heartbeatStatus(agentId: string, payload: unknown): AgentStatus | undefined {
@@ -78,7 +186,7 @@ function candidateArrays(payload: unknown): unknown[] {
 }
 
 export function extractOpenClawAgents(payload: unknown) {
-  const rootPayload = isRecord(payload) && isRecord(payload.payload) ? payload.payload : payload;
+  const rootPayload = rootOpenClawPayload(payload);
   const mappedAgents =
     isRecord(rootPayload) && isRecord(rootPayload.agents)
       ? recordEntries(rootPayload.agents)
@@ -106,6 +214,56 @@ export function extractOpenClawAgents(payload: unknown) {
   return [...agentsById.values()];
 }
 
+export function extractOpenClawAgentActivities(payload: unknown) {
+  const rootPayload = rootOpenClawPayload(payload);
+  const sessions = isRecord(rootPayload) && isRecord(rootPayload.sessions) ? rootPayload.sessions : undefined;
+  const activities: {
+    externalId: string;
+    sessionId?: string;
+    kind?: string;
+    updatedAt?: Date;
+    model?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    raw: JsonRecord;
+  }[] = [];
+
+  const addRecent = (fallbackAgentId: string | undefined, recent: unknown) => {
+    if (!isRecord(recent)) return;
+    const externalId = stringValue(recent.agentId) ?? fallbackAgentId;
+    if (!externalId) return;
+    activities.push({
+      externalId,
+      sessionId: stringValue(recent.sessionId) ?? stringValue(recent.id) ?? stringValue(recent.key),
+      kind: stringValue(recent.kind),
+      updatedAt: dateValue(recent.updatedAt),
+      model: stringValue(recent.model),
+      inputTokens: numberValue(recent.inputTokens),
+      outputTokens: numberValue(recent.outputTokens),
+      totalTokens: numberValue(recent.totalTokens),
+      raw: recent
+    });
+  };
+
+  if (isRecord(sessions) && Array.isArray(sessions.byAgent)) {
+    for (const entry of sessions.byAgent.filter(isRecord)) {
+      const agentId = stringValue(entry.agentId);
+      if (Array.isArray(entry.recent)) {
+        for (const recent of entry.recent) addRecent(agentId, recent);
+      }
+    }
+  }
+
+  if (isRecord(sessions) && Array.isArray(sessions.recent)) {
+    for (const recent of sessions.recent) addRecent(undefined, recent);
+  }
+
+  const key = (activity: (typeof activities)[number]) =>
+    `${activity.externalId}:${activity.sessionId ?? activity.raw.key ?? activity.updatedAt?.toISOString() ?? "unknown"}`;
+  return [...new Map(activities.map((activity) => [key(activity), activity])).values()];
+}
+
 function findJobPayload(payload: unknown): JsonRecord | null {
   if (!isRecord(payload)) return null;
   if (payload.jobId || payload.job_id || payload.job) return payload;
@@ -118,9 +276,11 @@ function findJobPayload(payload: unknown): JsonRecord | null {
 
 export async function syncOpenClawAgentsFromPayload(payload: unknown) {
   const externalAgents = extractOpenClawAgents(payload);
+  const activities = extractOpenClawAgentActivities(payload);
   const map = agentMap();
   const dashboardAgents = await prisma.agent.findMany();
   let updated = 0;
+  let activitiesRecorded = 0;
 
   for (const dashboardAgent of dashboardAgents) {
     const mappedExternalId = map[dashboardAgent.slug];
@@ -147,15 +307,78 @@ export async function syncOpenClawAgentsFromPayload(payload: unknown) {
     updated += 1;
   }
 
-  await createAuditLog({
-    eventType: "webhook_received",
-    severity: updated > 0 ? "info" : "warning",
-    message: `Sync OpenClaw atualizou ${updated} de ${dashboardAgents.length} agentes.`,
-    inputPayload: payload,
-    outputPayload: { updated, discovered: externalAgents.length }
-  });
+  for (const activity of activities) {
+    const dashboardAgent = dashboardAgents.find((agent) => matchesDashboardAgent(agent, activity.externalId));
+    if (!dashboardAgent) continue;
 
-  return { updated, discovered: externalAgents.length };
+    const activityAt = activity.updatedAt ?? new Date();
+    const ageMs = Date.now() - activityAt.getTime();
+    await prisma.agent.update({
+      where: { id: dashboardAgent.id },
+      data: {
+        status: ageMs >= 0 && ageMs < 5 * 60_000 ? "busy" : undefined,
+        lastActivityAt: activityAt,
+        lastHeartbeatAt: new Date()
+      }
+    });
+
+    const decision = activity.sessionId ?? stringValue(activity.raw.key) ?? activityAt.toISOString();
+    const existing = await prisma.agentLog.findFirst({
+      where: {
+        agentId: dashboardAgent.id,
+        eventType: "webhook_received",
+        stage: "OpenClaw session",
+        decision
+      }
+    });
+
+    if (existing) continue;
+
+    await createAuditLog({
+      agentId: dashboardAgent.id,
+      eventType: "webhook_received",
+      severity: "info",
+      stage: "OpenClaw session",
+      decision,
+      score: numberValue(activity.raw.percentUsed),
+      message: `Sessao OpenClaw detectada para ${dashboardAgent.name}.`,
+      inputPayload: activity.raw,
+      outputPayload: {
+        externalId: activity.externalId,
+        model: activity.model,
+        kind: activity.kind,
+        inputTokens: activity.inputTokens,
+        outputTokens: activity.outputTokens,
+        totalTokens: activity.totalTokens
+      }
+    });
+    activitiesRecorded += 1;
+  }
+
+  const recentSyncLog = await prisma.agentLog.findFirst({
+    where: {
+      eventType: "webhook_received",
+      stage: "OpenClaw sync"
+    },
+    orderBy: { createdAt: "desc" }
+  });
+  const shouldLogSync =
+    activitiesRecorded > 0 ||
+    !recentSyncLog ||
+    Date.now() - recentSyncLog.createdAt.getTime() > 5 * 60_000;
+
+  if (shouldLogSync) {
+    await createAuditLog({
+      eventType: "webhook_received",
+      severity: updated > 0 ? "info" : "warning",
+      stage: "OpenClaw sync",
+      message: `Sync OpenClaw atualizou ${updated} de ${dashboardAgents.length} agentes e registrou ${activitiesRecorded} atividades.`,
+      inputPayload: payload,
+      outputPayload: { updated, discovered: externalAgents.length, sessionsDiscovered: activities.length, activitiesRecorded }
+    });
+  }
+
+  return { updated, discovered: externalAgents.length, sessionsDiscovered: activities.length, activitiesRecorded };
 }
 
 export async function applyOpenClawAgentEvent(input: {
@@ -204,39 +427,148 @@ export async function applyOpenClawTaskUpdate(input: {
     stringValue(payloadRecord?.jobId) ??
     stringValue(payloadRecord?.job_id) ??
     stringValue(isRecord(payloadRecord?.job) ? payloadRecord.job.jobId : undefined);
-  const status = normalizeStatus(input.status ?? payloadRecord?.status ?? payloadRecord?.stage, jobStatuses);
+  const status =
+    normalizeStatus(input.status ?? payloadRecord?.status ?? payloadRecord?.stage, jobStatuses) ??
+    statusFromEvent(input.event);
   const severity = normalizeStatus(payloadRecord?.severity, severities) ?? (status === "failed" ? "error" : "info");
-  const agent = input.agentSlug
-    ? await prisma.agent.findFirst({ where: { OR: [{ slug: input.agentSlug }, { name: input.agentSlug }] } })
-    : null;
+  const agentKey =
+    input.agentSlug ??
+    firstString(payloadRecord, ["agentSlug", "agent_slug", "agentId", "agent_id", "assignedAgent", "currentAgent"]);
+  const agent = await findDashboardAgent(agentKey);
 
   let jobUpdated = false;
-  if (jobId && status) {
+  let jobCreated = false;
+  if (jobId) {
     const existing = await prisma.articleJob.findUnique({ where: { jobId } });
-    if (existing) {
-      await prisma.articleJob.update({
-        where: { jobId },
+    const effectiveStatus = status ?? "new";
+    const title =
+      firstString(payloadRecord, ["title", "headline", "articleTitle", "article_title"]) ??
+      `Job OpenClaw ${jobId}`;
+    const topic = firstString(payloadRecord, ["topic", "subject", "query"]) ?? title;
+    const category = firstString(payloadRecord, ["category", "vertical", "section"]) ?? "OpenClaw";
+    const sourceName = firstString(payloadRecord, ["sourceName", "source_name", "source", "publisher"]) ?? "OpenClaw Gateway";
+    const sourceUrl = firstString(payloadRecord, ["sourceUrl", "source_url", "url", "link"]) ?? "https://openclaw.local/events";
+    const explicitStage = firstString(payloadRecord, ["currentStage", "current_stage", "stage"]);
+    const currentStage = explicitStage ?? JOB_STATUS_META[effectiveStatus].stage;
+    const priority = normalizeStatus(firstPayloadValue(payloadRecord, ["priority"]), priorities);
+    const articleMarkdown = firstString(payloadRecord, ["articleMarkdown", "article_markdown", "article", "content", "body"]);
+
+    const job = await prisma.articleJob.upsert({
+      where: { jobId },
+      create: {
+        jobId,
+        title,
+        topic,
+        category,
+        sourceName,
+        sourceUrl,
+        clusterId: firstString(payloadRecord, ["clusterId", "cluster_id"]),
+        currentStage,
+        status: effectiveStatus,
+        priority: priority ?? "normal",
+        assignedAgentId: agent?.id ?? null,
+        relevanceScore: firstNumber(payloadRecord, ["relevanceScore", "relevance_score"]),
+        validationScore: firstNumber(payloadRecord, ["validationScore", "validation_score"]),
+        editorialScore: firstNumber(payloadRecord, ["editorialScore", "editorial_score"]),
+        seoScore: firstNumber(payloadRecord, ["seoScore", "seo_score"]),
+        complianceScore: firstNumber(payloadRecord, ["complianceScore", "compliance_score"]),
+        monetizationScore: firstNumber(payloadRecord, ["monetizationScore", "monetization_score"]),
+        hasAffiliate: booleanValue(firstPayloadValue(payloadRecord, ["hasAffiliate", "has_affiliate"])) ?? false,
+        requiresHumanReview:
+          effectiveStatus === "human_review" ||
+          booleanValue(firstPayloadValue(payloadRecord, ["requiresHumanReview", "requires_human_review"])) === true,
+        wordpressPostId: firstString(payloadRecord, ["wordpressPostId", "wordpress_post_id", "postId"]),
+        wordpressPreviewUrl: firstString(payloadRecord, ["wordpressPreviewUrl", "wordpress_preview_url", "previewUrl"]),
+        errorMessage:
+          effectiveStatus === "failed"
+            ? firstString(payloadRecord, ["errorMessage", "error_message", "error", "message"])
+            : undefined,
+        articleMarkdown
+      },
+      update: {
+        status: status ?? undefined,
+        currentStage: status ? JOB_STATUS_META[status].stage : explicitStage ?? undefined,
+        assignedAgentId: agent?.id ?? undefined,
+        relevanceScore: firstNumber(payloadRecord, ["relevanceScore", "relevance_score"]) ?? undefined,
+        validationScore: firstNumber(payloadRecord, ["validationScore", "validation_score"]) ?? undefined,
+        editorialScore: firstNumber(payloadRecord, ["editorialScore", "editorial_score"]) ?? undefined,
+        seoScore: firstNumber(payloadRecord, ["seoScore", "seo_score"]) ?? undefined,
+        complianceScore: firstNumber(payloadRecord, ["complianceScore", "compliance_score"]) ?? undefined,
+        monetizationScore: firstNumber(payloadRecord, ["monetizationScore", "monetization_score"]) ?? undefined,
+        hasAffiliate: booleanValue(firstPayloadValue(payloadRecord, ["hasAffiliate", "has_affiliate"])) ?? undefined,
+        requiresHumanReview:
+          status === "human_review"
+            ? true
+            : booleanValue(firstPayloadValue(payloadRecord, ["requiresHumanReview", "requires_human_review"])) ??
+              undefined,
+        wordpressPostId: firstString(payloadRecord, ["wordpressPostId", "wordpress_post_id", "postId"]) ?? undefined,
+        wordpressPreviewUrl:
+          firstString(payloadRecord, ["wordpressPreviewUrl", "wordpress_preview_url", "previewUrl"]) ?? undefined,
+        errorMessage:
+          status === "failed"
+            ? firstString(payloadRecord, ["errorMessage", "error_message", "error", "message"]) ??
+              "Falha reportada pelo OpenClaw."
+            : undefined,
+        articleMarkdown: articleMarkdown ?? undefined
+      }
+    });
+
+    const snapshotStage = status ? JOB_STATUS_META[status].stage : currentStage;
+    const outputPayload =
+      firstPayloadValue(payloadRecord, ["outputPayload", "output_payload", "output", "result", "response"]) ?? {};
+    const inputHash = jsonHash(input.payload ?? payloadRecord);
+    const outputHash = jsonHash(outputPayload);
+    const existingSnapshot = await prisma.payloadSnapshot.findFirst({
+      where: { jobId, stage: snapshotStage, inputHash, outputHash }
+    });
+    if (!existingSnapshot) {
+      await prisma.payloadSnapshot.create({
         data: {
-          status,
-          currentStage: JOB_STATUS_META[status].stage,
-          assignedAgentId: agent?.id ?? undefined,
-          relevanceScore: numberValue(payloadRecord?.relevanceScore ?? payloadRecord?.relevance_score) ?? undefined,
-          validationScore: numberValue(payloadRecord?.validationScore ?? payloadRecord?.validation_score) ?? undefined,
-          editorialScore: numberValue(payloadRecord?.editorialScore ?? payloadRecord?.editorial_score) ?? undefined,
-          seoScore: numberValue(payloadRecord?.seoScore ?? payloadRecord?.seo_score) ?? undefined,
-          complianceScore: numberValue(payloadRecord?.complianceScore ?? payloadRecord?.compliance_score) ?? undefined,
-          monetizationScore: numberValue(payloadRecord?.monetizationScore ?? payloadRecord?.monetization_score) ?? undefined,
-          errorMessage: status === "failed" ? stringValue(payloadRecord?.errorMessage ?? payloadRecord?.error) : undefined
+          jobId,
+          stage: snapshotStage,
+          agentId: agent?.id ?? null,
+          inputPayload: asJson(input.payload ?? payloadRecord),
+          outputPayload: asJson(outputPayload),
+          inputHash,
+          outputHash
         }
       });
-      jobUpdated = true;
+    }
+
+    const sourceUrlValue = firstString(payloadRecord, ["sourceUrl", "source_url", "url", "link"]);
+    if (sourceUrlValue) {
+      const existingSource = await prisma.source.findFirst({ where: { jobId, url: sourceUrlValue } });
+      if (!existingSource) {
+        await prisma.source.create({
+          data: {
+            jobId,
+            name: sourceName,
+            url: sourceUrlValue,
+            role: "primary",
+            reliabilityScore: firstNumber(payloadRecord, ["reliabilityScore", "reliability_score"]) ?? 80
+          }
+        });
+      }
+    }
+
+    jobUpdated = true;
+    jobCreated = !existing;
+    if (agent) {
+      await prisma.agent.update({
+        where: { id: agent.id },
+        data: {
+          currentTaskId: job.jobId,
+          lastActivityAt: new Date(),
+          status: status && ["published", "drafted", "discarded", "failed"].includes(status) ? "online" : "busy"
+        }
+      });
     }
   }
 
   await createAuditLog({
     jobId,
     agentId: agent?.id,
-    eventType: status === "failed" ? "failed" : "webhook_received",
+    eventType: jobCreated ? "job_created" : status === "failed" ? "failed" : "webhook_received",
     severity,
     stage: status ? JOB_STATUS_META[status].stage : input.event,
     decision: status,
@@ -245,7 +577,7 @@ export async function applyOpenClawTaskUpdate(input: {
     inputPayload: input
   });
 
-  return { accepted: true, updatedJob: jobUpdated, jobId, status };
+  return { accepted: true, updatedJob: jobUpdated, createdJob: jobCreated, jobId, status };
 }
 
 export async function handleOpenClawGatewayMessage(message: unknown) {
@@ -253,7 +585,7 @@ export async function handleOpenClawGatewayMessage(message: unknown) {
   const payload = record.payload ?? record;
   const type = stringValue(record.type) ?? "gateway_event";
 
-  if (extractOpenClawAgents(payload).length > 0) {
+  if (extractOpenClawAgents(payload).length > 0 || extractOpenClawAgentActivities(payload).length > 0) {
     await syncOpenClawAgentsFromPayload(payload);
   }
 

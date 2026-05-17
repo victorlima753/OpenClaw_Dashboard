@@ -66,9 +66,24 @@ export function DashboardPage() {
             Visão de saúde do pipeline editorial multiagente TechSouls.
           </p>
         </div>
-        <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
-          Tempo médio {formatDuration(data.averageProcessingTimeMs)}
-        </Badge>
+        <div className="flex flex-wrap gap-2">
+          {data.openClaw ? (
+            <Badge
+              className={
+                data.openClaw.connected
+                  ? "gap-1.5 border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                  : "gap-1.5 border-amber-500/30 bg-amber-500/10 text-amber-300"
+              }
+            >
+              <RadioTower className="size-3.5" />
+              {data.openClaw.label}
+              {data.openClaw.lastSeenAt ? ` · ${formatRelativeTime(data.openClaw.lastSeenAt)}` : ""}
+            </Badge>
+          ) : null}
+          <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+            Tempo médio {formatDuration(data.averageProcessingTimeMs)}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">

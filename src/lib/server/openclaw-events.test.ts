@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractOpenClawAgents } from "./openclaw-events";
+import { extractOpenClawAgentActivities, extractOpenClawAgents } from "./openclaw-events";
 
 describe("extractOpenClawAgents", () => {
   it("reads the Gateway status response where agents are keyed by agentId", () => {
@@ -46,5 +46,41 @@ describe("extractOpenClawAgents", () => {
         expect.objectContaining({ externalId: "writer", status: "online" })
       ])
     );
+  });
+
+  it("reads recent sessions by agent from Gateway status", () => {
+    const activities = extractOpenClawAgentActivities({
+      type: "res",
+      ok: true,
+      payload: {
+        sessions: {
+          byAgent: [
+            {
+              agentId: "writer",
+              recent: [
+                {
+                  agentId: "writer",
+                  sessionId: "session-1",
+                  updatedAt: 1779053939504,
+                  model: "gemini-flash-latest",
+                  inputTokens: 100,
+                  outputTokens: 25
+                }
+              ]
+            }
+          ]
+        }
+      }
+    });
+
+    expect(activities).toEqual([
+      expect.objectContaining({
+        externalId: "writer",
+        sessionId: "session-1",
+        model: "gemini-flash-latest",
+        inputTokens: 100,
+        outputTokens: 25
+      })
+    ]);
   });
 });

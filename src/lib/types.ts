@@ -155,6 +155,14 @@ export type DashboardStats = {
   tasksByAgent: { agent: string; total: number }[];
   recentLogs: AgentLogDto[];
   criticalAlerts: AgentLogDto[];
+  openClaw?: {
+    realEnabled: boolean;
+    connected: boolean;
+    status: "connected" | "stale" | "disabled";
+    label: string;
+    lastSeenAt: string | null;
+    lastMessage: string | null;
+  };
 };
 
 export type RealtimeEvent = {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { RefreshCw, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,17 @@ import { apiFetch } from "@/lib/api/client";
 import { PageError, PageLoading } from "./page-state";
 
 type Setting = { id: string; key: string; value: unknown };
+type SyncResult = {
+  sync?: {
+    updated: number;
+    discovered: number;
+    sessionsDiscovered?: number;
+    activitiesRecorded?: number;
+  };
+};
+type ClearDemoResult = {
+  counts?: Record<string, number>;
+};
 
 const labels: Record<string, string> = {
   operation_mode: "Modo de operação",
@@ -37,10 +48,42 @@ export function SettingsPage() {
     queryFn: () => apiFetch<Setting[]>("/api/settings")
   });
   const [draft, setDraft] = useState<Record<string, unknown>>({});
+  const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       apiFetch("/api/settings", { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings"] })
+  });
+  const invalidateOperationalQueries = () => {
+    for (const key of ["dashboard", "agents", "tasks", "queue", "review", "audit"]) {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  };
+  const syncOpenClawMutation = useMutation({
+    mutationFn: () => apiFetch<SyncResult>("/api/openclaw/sync-agents", { method: "POST", body: "{}" }),
+    onSuccess: (result) => {
+      invalidateOperationalQueries();
+      setOperationMessage(
+        `OpenClaw sincronizado: ${result.sync?.updated ?? 0} agentes atualizados, ${
+          result.sync?.discovered ?? 0
+        } descobertos, ${result.sync?.activitiesRecorded ?? 0} atividades registradas.`
+      );
+    },
+    onError: (error) => setOperationMessage(error instanceof Error ? error.message : "Falha ao sincronizar OpenClaw.")
+  });
+  const clearDemoMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<ClearDemoResult>("/api/admin/clear-demo-data", {
+        method: "POST",
+        body: JSON.stringify({ confirm: "CLEAR_DEMO_DATA" })
+      }),
+    onSuccess: (result) => {
+      invalidateOperationalQueries();
+      const jobs = result.counts?.articleJobs ?? 0;
+      const logs = result.counts?.agentLogs ?? 0;
+      setOperationMessage(`Dados demo limpos: ${jobs} jobs e ${logs} logs removidos.`);
+    },
+    onError: (error) => setOperationMessage(error instanceof Error ? error.message : "Falha ao limpar dados demo.")
   });
 
   const persisted = useMemo(
@@ -53,6 +96,10 @@ export function SettingsPage() {
   if (error || !data) return <PageError error={error} />;
 
   const setValue = (key: string, value: unknown) => setDraft((current) => ({ ...current, [key]: value }));
+  const clearDemoData = () => {
+    if (!window.confirm("Remover jobs, logs, payloads, fontes e revisoes demo do dashboard?")) return;
+    clearDemoMutation.mutate();
+  };
 
   return (
     <div className="space-y-5">
@@ -67,6 +114,34 @@ export function SettingsPage() {
           <Save /> Salvar ajustes
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>OpenClaw real</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm text-muted-foreground">
+              Sincronize agentes, sessoes recentes e novos jobs reais do Gateway.
+            </p>
+            {operationMessage ? <p className="mt-2 text-sm text-sky-300">{operationMessage}</p> : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => syncOpenClawMutation.mutate()}
+              disabled={syncOpenClawMutation.isPending}
+            >
+              <RefreshCw className={syncOpenClawMutation.isPending ? "animate-spin" : ""} />
+              Sincronizar OpenClaw
+            </Button>
+            <Button variant="destructive" onClick={clearDemoData} disabled={clearDemoMutation.isPending}>
+              <Trash2 />
+              Limpar demo data
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
