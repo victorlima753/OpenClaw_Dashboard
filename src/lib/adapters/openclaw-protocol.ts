@@ -16,6 +16,14 @@ type ConnectChallenge = {
 
 const DEFAULT_SCOPES = ["operator.read", "operator.write", "operator.admin", "operator.approvals"];
 
+function cleanEnv(value: string | undefined, fallback = "") {
+  const trimmed = (value ?? "").trim();
+  const first = trimmed.at(0);
+  const last = trimmed.at(-1);
+  if ((first === `"` || first === "'" || first === "`") && first === last) return trimmed.slice(1, -1).trim();
+  return trimmed || fallback;
+}
+
 export function parseGatewayMessage(data: unknown): GatewayMessage {
   if (typeof data === "string") return JSON.parse(data) as GatewayMessage;
   if (data instanceof ArrayBuffer) return JSON.parse(new TextDecoder().decode(data)) as GatewayMessage;
@@ -32,10 +40,10 @@ export function isGatewayResponse(message: GatewayMessage, id: string) {
 }
 
 function protocolVersionRange() {
-  const configured = process.env.OPENCLAW_PROTOCOL_VERSION;
+  const configured = cleanEnv(process.env.OPENCLAW_PROTOCOL_VERSION);
   if (configured) {
     const protocol = Number(configured);
-    const minProtocol = Number(process.env.OPENCLAW_MIN_PROTOCOL_VERSION ?? 3);
+    const minProtocol = Number(cleanEnv(process.env.OPENCLAW_MIN_PROTOCOL_VERSION, "3"));
     return { minProtocol: Math.min(minProtocol, protocol), maxProtocol: protocol };
   }
   return { minProtocol: 3, maxProtocol: 4 };
@@ -49,16 +57,18 @@ function scopes() {
 }
 
 function connectAuth() {
+  const token = cleanEnv(process.env.OPENCLAW_GATEWAY_TOKEN);
+  const password = cleanEnv(process.env.OPENCLAW_GATEWAY_PASSWORD);
   return {
-    ...(process.env.OPENCLAW_GATEWAY_TOKEN ? { token: process.env.OPENCLAW_GATEWAY_TOKEN } : {}),
-    ...(process.env.OPENCLAW_GATEWAY_PASSWORD ? { password: process.env.OPENCLAW_GATEWAY_PASSWORD } : {})
+    ...(token ? { token } : {}),
+    ...(password ? { password } : {})
   };
 }
 
 function optionalDevice(challenge: ConnectChallenge) {
-  const id = process.env.OPENCLAW_DEVICE_ID;
-  const publicKey = process.env.OPENCLAW_DEVICE_PUBLIC_KEY;
-  const signature = process.env.OPENCLAW_DEVICE_SIGNATURE;
+  const id = cleanEnv(process.env.OPENCLAW_DEVICE_ID);
+  const publicKey = cleanEnv(process.env.OPENCLAW_DEVICE_PUBLIC_KEY);
+  const signature = cleanEnv(process.env.OPENCLAW_DEVICE_SIGNATURE);
   if (!id || !publicKey || !signature) return undefined;
 
   return {
@@ -72,8 +82,8 @@ function optionalDevice(challenge: ConnectChallenge) {
 
 export function buildConnectRequest(id: string, challenge: ConnectChallenge) {
   const device = optionalDevice(challenge);
-  const configuredMode = process.env.OPENCLAW_CLIENT_MODE ?? "operator";
-  const clientMode = configuredMode === "backend" ? "operator" : configuredMode;
+  const configuredMode = cleanEnv(process.env.OPENCLAW_CLIENT_MODE, "operator");
+  const clientMode = configuredMode === "backend" || !["operator", "node"].includes(configuredMode) ? "operator" : configuredMode;
 
   return {
     type: "req",
@@ -82,9 +92,9 @@ export function buildConnectRequest(id: string, challenge: ConnectChallenge) {
     params: {
       ...protocolVersionRange(),
       client: {
-        id: process.env.OPENCLAW_CLIENT_ID ?? "gateway-client",
-        version: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0",
-        platform: process.env.OPENCLAW_CLIENT_PLATFORM ?? "docker",
+        id: cleanEnv(process.env.OPENCLAW_CLIENT_ID, "gateway-client"),
+        version: cleanEnv(process.env.NEXT_PUBLIC_APP_VERSION, "0.1.0"),
+        platform: cleanEnv(process.env.OPENCLAW_CLIENT_PLATFORM, "docker"),
         mode: clientMode
       },
       role: "operator",

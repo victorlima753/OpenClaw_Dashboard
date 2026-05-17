@@ -40,4 +40,17 @@ describe("OpenClaw gateway protocol helpers", () => {
       params: {}
     });
   });
+
+  it("normalizes quoted or unsupported EasyPanel env values", () => {
+    vi.stubEnv("OPENCLAW_CLIENT_MODE", '"backend"');
+    vi.stubEnv("OPENCLAW_CLIENT_ID", '"gateway-client"');
+    vi.stubEnv("OPENCLAW_GATEWAY_TOKEN", '"token-123"');
+
+    const request = buildConnectRequest("connect-id", { nonce: "nonce-123" });
+
+    expect(request.params.client).toMatchObject({ id: "gateway-client", mode: "operator" });
+    expect(request.params.auth).toEqual({ token: "token-123" });
+
+    vi.unstubAllEnvs();
+  });
 });
