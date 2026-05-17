@@ -22,6 +22,10 @@ function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : undefined;
 }
 
+function recordEntries(value: unknown) {
+  return isRecord(value) ? Object.entries(value) : [];
+}
+
 function normalizeStatus<T extends string>(value: unknown, allowed: readonly T[]) {
   if (typeof value !== "string") return undefined;
   const normalized = value.toLowerCase().replaceAll("-", "_") as T;
@@ -37,6 +41,26 @@ function agentMap() {
   }
 }
 
+function heartbeatStatus(agentId: string, payload: unknown): AgentStatus | undefined {
+  const heartbeat = isRecord(payload) && isRecord(payload.heartbeats) ? payload.heartbeats[agentId] : undefined;
+  if (!isRecord(heartbeat)) return undefined;
+  const age = numberValue(heartbeat.age);
+  if (age !== undefined) return age < 120_000 ? "online" : "offline";
+  return "online";
+}
+
+function normalizeOpenClawAgent(agent: JsonRecord, fallbackId?: string, rootPayload?: unknown) {
+  const id = stringValue(agent.id) ?? stringValue(agent.agentId) ?? stringValue(agent.slug) ?? fallbackId;
+  return {
+    externalId: id,
+    slug: stringValue(agent.slug) ?? stringValue(agent.name) ?? id,
+    name: stringValue(agent.name) ?? stringValue(agent.label) ?? stringValue(agent.slug) ?? id,
+    status: normalizeStatus(agent.status ?? agent.state ?? agent.presence, agentStatuses) ?? (id ? heartbeatStatus(id, rootPayload) : undefined),
+    currentTaskId: stringValue(agent.currentTaskId) ?? stringValue(agent.jobId) ?? stringValue(agent.job_id),
+    raw: agent
+  };
+}
+
 function candidateArrays(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return [payload];
   if (!isRecord(payload)) return [];
@@ -49,18 +73,26 @@ function candidateArrays(payload: unknown): unknown[] {
 }
 
 export function extractOpenClawAgents(payload: unknown) {
-  return candidateArrays(payload)
+  const rootPayload = isRecord(payload) && isRecord(payload.payload) ? payload.payload : payload;
+  const mappedAgents =
+    isRecord(rootPayload) && isRecord(rootPayload.agents)
+      ? recordEntries(rootPayload.agents)
+          .map(([agentId, agent]) => (isRecord(agent) ? normalizeOpenClawAgent(agent, agentId, rootPayload) : null))
+          .filter((agent) => agent !== null)
+      : [];
+
+  const arrayAgents = candidateArrays(payload)
     .flat()
     .filter(isRecord)
-    .map((agent) => ({
-      externalId: stringValue(agent.id) ?? stringValue(agent.agentId) ?? stringValue(agent.slug),
-      slug: stringValue(agent.slug) ?? stringValue(agent.name),
-      name: stringValue(agent.name) ?? stringValue(agent.label) ?? stringValue(agent.slug),
-      status: normalizeStatus(agent.status ?? agent.state ?? agent.presence, agentStatuses),
-      currentTaskId: stringValue(agent.currentTaskId) ?? stringValue(agent.jobId) ?? stringValue(agent.job_id),
-      raw: agent
-    }))
+    .map((agent) => normalizeOpenClawAgent(agent, undefined, rootPayload))
     .filter((agent) => agent.externalId || agent.slug || agent.name);
+
+  const agentsById = new Map<string, (typeof arrayAgents)[number]>();
+  for (const agent of [...mappedAgents, ...arrayAgents]) {
+    const key = agent.externalId ?? agent.slug ?? agent.name;
+    if (key) agentsById.set(key, agent);
+  }
+  return [...agentsById.values()];
 }
 
 function findJobPayload(payload: unknown): JsonRecord | null {
