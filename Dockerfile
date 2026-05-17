@@ -27,6 +27,7 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 RUN DATABASE_URL=postgresql://techsouls:techsouls@127.0.0.1:5432/techsouls_command_center?schema=public npm ci --omit=dev
 RUN DATABASE_URL=postgresql://techsouls:techsouls@127.0.0.1:5432/techsouls_command_center?schema=public npm run prisma:generate
 COPY --from=builder /app/scripts ./scripts
