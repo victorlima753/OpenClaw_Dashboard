@@ -4,6 +4,7 @@ import { mockQueueAdapter } from "@/lib/adapters/mock";
 import { createAuditLog } from "@/lib/server/audit";
 import type { ArticleJobDto } from "@/lib/types";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,14 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ j
       outputPayload: queueResult
     });
 
-    return NextResponse.json({ job, queueResult });
+    const openClawCommand = await dispatchOpenClawCommand({
+      type: "task_retry",
+      jobId,
+      agentId: job.assignedAgentId,
+      payload: { jobId, status: "new", source: "techsouls-command-center" }
+    });
+
+    return NextResponse.json({ job, queueResult, openClawCommand });
   } catch (error) {
     if (isDatabaseUnavailable(error)) {
       const result = mockStore.retryTask(jobId);

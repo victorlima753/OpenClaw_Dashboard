@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { reviewDecisionSchema } from "@/lib/validation/schemas";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       decision: "returned_to_writer",
       message: `Job ${jobId} devolvido para Writer.`,
       inputPayload: body
+    });
+
+    await dispatchOpenClawCommand({
+      type: "human_review_return_to_writer",
+      jobId,
+      payload: { jobId, comment: body.comment, nextStatus: "writing", source: "techsouls-command-center" }
     });
 
     return NextResponse.json(job);

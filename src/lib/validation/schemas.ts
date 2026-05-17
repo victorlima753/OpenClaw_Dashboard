@@ -105,6 +105,8 @@ export const webhookEventSchema = z.object({
   agentSlug: z.string().optional(),
   event: z.string().min(1),
   status: z.string().optional(),
+  source: z.string().optional(),
+  timestamp: z.string().optional(),
   payload: z.unknown().optional()
 });
 

@@ -42,9 +42,16 @@ function clone<T>(value: T): T {
 }
 
 export function isDatabaseUnavailable(error: unknown) {
+  if (!isMockFallbackEnabled()) return false;
   const message = String(error instanceof Error ? error.message : error);
   const code = (error as { code?: string } | null)?.code;
   return code === "ECONNREFUSED" || message.includes("ECONNREFUSED") || message.includes("Can't reach database");
+}
+
+export function isMockFallbackEnabled() {
+  const value = process.env.ALLOW_MOCK_FALLBACK;
+  if (value === undefined) return process.env.NODE_ENV !== "production";
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
 class MockStore {

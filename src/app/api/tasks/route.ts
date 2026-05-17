@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createTaskSchema } from "@/lib/validation/schemas";
 import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,12 @@ export async function POST(request: NextRequest) {
       stage: "Entrada",
       message: `Job ${jobId} criado manualmente.`,
       inputPayload: body
+    });
+
+    await dispatchOpenClawCommand({
+      type: "job_created",
+      jobId,
+      payload: { ...body, jobId, source: "techsouls-command-center" }
     });
 
     return NextResponse.json(job, { status: 201 });

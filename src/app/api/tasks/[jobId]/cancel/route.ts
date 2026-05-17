@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,13 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ j
       stage: "Encerrado",
       decision: "discarded",
       message: `Job ${jobId} cancelado manualmente.`
+    });
+
+    await dispatchOpenClawCommand({
+      type: "task_cancel",
+      jobId,
+      agentId: job.assignedAgentId,
+      payload: { jobId, status: "discarded", source: "techsouls-command-center" }
     });
 
     return NextResponse.json(job);

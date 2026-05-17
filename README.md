@@ -28,3 +28,36 @@ npm.cmd run dev
 ```
 
 Se o PowerShell bloquear `npm`, use `npm.cmd`, como nos scripts acima.
+Em desenvolvimento, se `ADMIN_USERNAME` e `ADMIN_PASSWORD` não estiverem no `.env`, o login padrão é `admin` / `admin`.
+
+## Produção no EasyPanel
+
+Crie o app `techsouls-command-center` no projeto EasyPanel `techsouls_openclaw`, usando este repositório como source e o `Dockerfile` da raiz. Aponte o domínio público `openclaw.techsouls.com.br` para o dashboard.
+
+Secrets mínimos:
+
+- `DATABASE_URL`
+- `REDIS_URL`
+- `PUBLIC_APP_URL=https://openclaw.techsouls.com.br`
+- `ALLOW_MOCK_FALLBACK=false`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+- `SESSION_SECRET`
+- `OPENCLAW_GATEWAY_WS_URL`
+- `OPENCLAW_GATEWAY_TOKEN`
+- `OPENCLAW_AUTH_MODE=query`
+- `OPENCLAW_WEBHOOK_SECRET`
+- `OPENCLAW_AGENT_MAP_JSON`
+
+Comandos de release:
+
+```sh
+npm run prisma:deploy
+npm run db:seed
+```
+
+Crie também um segundo serviço no EasyPanel para o worker realtime com o mesmo build/envs e comando:
+
+```sh
+npm run worker:openclaw
+```

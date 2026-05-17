@@ -45,7 +45,7 @@ export function AgentDetailPage() {
             </Button>
           )}
           <Button variant="outline" onClick={() => action.mutate("restart")}>
-            <RotateCcw /> Restart mockado
+            <RotateCcw /> Restart
           </Button>
           <Button variant="destructive" onClick={() => action.mutate("clear-errors")}>
             <Trash2 /> Clear errors
@@ -127,11 +127,11 @@ export function AgentDetailPage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Permissões mockadas</CardTitle>
+              <CardTitle>Permissões operacionais</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2 text-sm text-muted-foreground">
               <p>read:queue, read:payloads, write:audit</p>
-              <p>execute:mock-action quando operador estiver em modo admin</p>
+              <p>execute:manual-action para administradores autenticados</p>
               <p>external-integrations: disabled na V1</p>
             </CardContent>
           </Card>

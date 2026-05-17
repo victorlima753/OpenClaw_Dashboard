@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,13 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
       agentId: agent.id,
       eventType: "agent_restarted",
       severity: "warning",
-      message: `Restart mockado executado para ${agent.name}.`
+      message: `Restart solicitado para ${agent.name}.`
+    });
+
+    await dispatchOpenClawCommand({
+      type: "agent_restart",
+      agentId: agent.id,
+      payload: { agentId: agent.id, agentSlug: agent.slug, source: "techsouls-command-center" }
     });
 
     return NextResponse.json(agent);

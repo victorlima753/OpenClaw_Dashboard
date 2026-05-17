@@ -1,0 +1,9 @@
+.env
+.env*.local
+.git
+.next
+.next-dev
+node_modules
+npm-debug.log*
+README.md
+dashboard.md

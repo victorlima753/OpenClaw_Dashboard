@@ -60,7 +60,7 @@ export function SettingsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-normal">Configurações</h1>
           <p className="text-sm text-muted-foreground">
-            Parâmetros operacionais mockados. Credenciais reais não devem ser salvas no frontend.
+            Parâmetros operacionais do painel. Credenciais reais ficam apenas em secrets do servidor.
           </p>
         </div>
         <Button onClick={() => mutation.mutate(form)}>

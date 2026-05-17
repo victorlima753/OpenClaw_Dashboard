@@ -1,25 +1,75 @@
 import { mockRealtimeAdapter } from "@/lib/adapters/mock";
+import { isRealOpenClawEnabled } from "@/lib/adapters/openclaw";
+import { prisma } from "@/lib/prisma";
+import { isMockFallbackEnabled } from "@/lib/server/mock-store";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const encoder = new TextEncoder();
+  const useMockStream = isMockFallbackEnabled() && !isRealOpenClawEnabled() && process.env.NODE_ENV !== "production";
 
   const stream = new ReadableStream({
     start(controller) {
-      const send = () => {
+      if (useMockStream) {
+        const send = () => {
+          const event = mockRealtimeAdapter.nextEvent();
+          controller.enqueue(encoder.encode(`event: ${event.type}\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        };
+
+        send();
+        const interval = setInterval(send, 4000);
+        request.signal.addEventListener("abort", () => clearInterval(interval));
+        setTimeout(() => {
+          clearInterval(interval);
+          controller.close();
+        }, 60_000);
+        return;
+      }
+
+      let lastSeen = new Date(Date.now() - 5 * 60_000);
+      const send = async () => {
+        const logs = await prisma.agentLog.findMany({
+          where: { createdAt: { gt: lastSeen } },
+          orderBy: { createdAt: "asc" },
+          take: 20,
+          include: { agent: { select: { id: true, name: true, slug: true } } }
+        });
+
+        for (const log of logs) {
+          lastSeen = log.createdAt;
+          const type = log.severity === "critical" || log.severity === "error" ? "critical_error" : "audit_log";
+          const event = {
+            type,
+            message: log.message,
+            payload: log,
+            createdAt: log.createdAt.toISOString()
+          };
+          controller.enqueue(encoder.encode(`event: ${type}\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        }
+      };
+
+      send().catch(() => {
         const event = mockRealtimeAdapter.nextEvent();
         controller.enqueue(encoder.encode(`event: ${event.type}\n`));
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-      };
+      });
+      const interval = setInterval(() => {
+        send().catch((error) => {
+          const event = {
+            type: "critical_error",
+            message: error instanceof Error ? error.message : "Falha no stream realtime.",
+            payload: null,
+            createdAt: new Date().toISOString()
+          };
+          controller.enqueue(encoder.encode("event: critical_error\n"));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        });
+      }, 4000);
 
-      send();
-      const interval = setInterval(send, 4000);
-
-      setTimeout(() => {
-        clearInterval(interval);
-        controller.close();
-      }, 60_000);
+      request.signal.addEventListener("abort", () => clearInterval(interval));
     }
   });
 

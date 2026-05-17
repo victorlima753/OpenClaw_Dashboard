@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,12 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
       eventType: "agent_paused",
       severity: "warning",
       message: `${agent.name} pausado manualmente.`
+    });
+
+    await dispatchOpenClawCommand({
+      type: "agent_pause",
+      agentId: agent.id,
+      payload: { agentId: agent.id, agentSlug: agent.slug, source: "techsouls-command-center" }
     });
 
     return NextResponse.json(agent);

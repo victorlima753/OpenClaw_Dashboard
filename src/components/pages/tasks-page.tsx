@@ -10,7 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AgentStatusBadge, JobStatusBadge, PriorityBadge } from "@/components/common/status-badge";
 import { KANBAN_COLUMNS, PRIORITY_META } from "@/lib/domain";
 import { useTaskAction, useTasks } from "@/lib/api/hooks";
-import { useAdminStore } from "@/lib/store/admin-store";
 import { formatRelativeTime } from "@/lib/utils";
 import { PageError, PageLoading } from "./page-state";
 import type { ArticleJobDto, JobPriority, JobStatus } from "@/lib/types";
@@ -165,7 +164,7 @@ function KanbanColumn({
 export function TasksPage() {
   const { data, isLoading, error } = useTasks();
   const action = useTaskAction();
-  const { isAdmin } = useAdminStore();
+  const isAdmin = true;
 
   if (isLoading) return <PageLoading />;
   if (error || !data) return <PageError error={error} />;
@@ -192,11 +191,11 @@ export function TasksPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-normal">Kanban de tarefas</h1>
           <p className="text-sm text-muted-foreground">
-            Movimento manual entre colunas fica ativo apenas no modo admin.
+            Movimento manual entre colunas fica ativo para administradores autenticados.
           </p>
         </div>
         <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
-          Modo atual: <span className="font-medium text-foreground">{isAdmin ? "Admin" : "Operador"}</span>
+          Modo atual: <span className="font-medium text-foreground">Admin</span>
         </div>
       </div>
 

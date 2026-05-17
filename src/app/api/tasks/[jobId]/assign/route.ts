@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { assignTaskSchema } from "@/lib/validation/schemas";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       stage: job.currentStage,
       decision: "assigned",
       message: `Job ${jobId} atribuido para ${job.assignedAgent?.name ?? body.agentId}.`
+    });
+
+    await dispatchOpenClawCommand({
+      type: "task_assign",
+      jobId,
+      agentId: body.agentId,
+      payload: {
+        jobId,
+        agentId: body.agentId,
+        agentSlug: job.assignedAgent?.slug,
+        source: "techsouls-command-center"
+      }
     });
 
     return NextResponse.json(job);

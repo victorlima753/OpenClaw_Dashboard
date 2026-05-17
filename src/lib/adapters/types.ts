@@ -7,9 +7,23 @@ export type AgentEventPayload = {
   payload?: unknown;
 };
 
+export type OpenClawCommand = {
+  type: string;
+  payload: Record<string, unknown>;
+};
+
+export type OpenClawCommandResult = {
+  accepted: boolean;
+  message: string;
+  requestId?: string;
+  response?: unknown;
+};
+
 export interface OpenClawAdapter {
   receiveAgentEvent(event: AgentEventPayload): Promise<{ accepted: boolean; message: string }>;
   receiveTaskUpdate(jobId: string, payload: unknown): Promise<{ accepted: boolean; message: string }>;
+  sendCommand(command: OpenClawCommand): Promise<OpenClawCommandResult>;
+  getStatus(): Promise<OpenClawCommandResult>;
 }
 
 export interface N8nAdapter {

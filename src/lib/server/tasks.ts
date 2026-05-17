@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { JOB_STATUS_META } from "@/lib/domain";
 import type { JobStatus } from "@/lib/types";
 import { createAuditLog } from "./audit";
+import { dispatchOpenClawCommand } from "./openclaw-events";
 
 export function jobStatusToStage(status: JobStatus) {
   return JOB_STATUS_META[status].stage;
@@ -27,6 +28,13 @@ export async function updateJobStatus(jobId: string, status: JobStatus, reason?:
     decision: status,
     message: `Status alterado para ${status}${reason ? `: ${reason}` : "."}`,
     inputPayload: { jobId, status, reason }
+  });
+
+  await dispatchOpenClawCommand({
+    type: "task_update",
+    jobId,
+    agentId: job.assignedAgentId,
+    payload: { jobId, status, reason, source: "techsouls-command-center" }
   });
 
   return job;

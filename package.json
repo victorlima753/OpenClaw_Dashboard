@@ -11,8 +11,10 @@
     "format": "prettier --write .",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "verify:seed": "tsx scripts/verify-seed.ts",
+    "worker:openclaw": "tsx scripts/openclaw-worker.ts",
     "test": "vitest run"
   },
   "dependencies": {

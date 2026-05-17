@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { reviewDecisionSchema } from "@/lib/validation/schemas";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       decision: "drafted",
       message: `Revisao humana salvou ${jobId} como rascunho.`,
       inputPayload: body
+    });
+
+    await dispatchOpenClawCommand({
+      type: "human_review_drafted",
+      jobId,
+      payload: { jobId, comment: body.comment, nextStatus: "drafted", source: "techsouls-command-center" }
     });
 
     return NextResponse.json(job);

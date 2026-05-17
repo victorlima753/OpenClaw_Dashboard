@@ -8,7 +8,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isApi = pathname?.startsWith("/api");
 
-  if (isApi) return children;
+  if (isApi || pathname === "/login") return children;
 
   return (
     <div className="min-h-screen bg-background ops-grid">

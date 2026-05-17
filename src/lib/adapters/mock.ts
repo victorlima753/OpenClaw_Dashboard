@@ -20,6 +20,21 @@ export const mockOpenClawAdapter: OpenClawAdapter = {
       accepted: true,
       message: `Atualizacao mockada aceita para ${jobId}.`
     };
+  },
+  async sendCommand(command) {
+    return {
+      accepted: true,
+      message: `Comando mockado ${command.type} aceito.`,
+      requestId: `mock-${Date.now()}`,
+      response: { mock: true, command }
+    };
+  },
+  async getStatus() {
+    return {
+      accepted: true,
+      message: "Gateway OpenClaw mockado online.",
+      response: { status: "online", agents: [] }
+    };
   }
 };
 
