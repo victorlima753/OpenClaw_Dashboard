@@ -5,17 +5,20 @@ import { createAuditLog } from "@/lib/server/audit";
 import type { ArticleJobDto } from "@/lib/types";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
+import { agentForStatus } from "@/lib/server/tasks";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(_request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   try {
+    const assignedAgent = await agentForStatus("new");
     const job = await prisma.articleJob.update({
       where: { jobId },
       data: {
         status: "new",
         currentStage: "Entrada",
+        assignedAgentId: assignedAgent?.id ?? undefined,
         errorMessage: null,
         requiresHumanReview: false
       },
@@ -39,7 +42,13 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ j
       type: "task_retry",
       jobId,
       agentId: job.assignedAgentId,
-      payload: { jobId, status: "new", source: "techsouls-command-center" }
+      payload: {
+        jobId,
+        status: "new",
+        assignedAgentId: job.assignedAgentId,
+        agentSlug: job.assignedAgent?.slug,
+        source: "techsouls-command-center"
+      }
     });
 
     return NextResponse.json({ job, queueResult, openClawCommand });

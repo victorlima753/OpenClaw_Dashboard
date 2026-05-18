@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { updateJobStatus } from "@/lib/server/tasks";
 import { updateStatusSchema } from "@/lib/validation/schemas";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { apiErrorResponse } from "@/lib/server/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ j
         ? NextResponse.json(job, { headers: { "x-techsouls-data-source": "mock" } })
         : NextResponse.json({ error: "Tarefa nao encontrada." }, { status: 404 });
     }
-    throw error;
+    return apiErrorResponse(error, "api/tasks/status");
   }
 }

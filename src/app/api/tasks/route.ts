@@ -5,6 +5,7 @@ import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 import { apiErrorResponse } from "@/lib/server/api-error";
+import { agentForStatus } from "@/lib/server/tasks";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +52,9 @@ export async function POST(request: NextRequest) {
   try {
     const count = await prisma.articleJob.count();
     const jobId = `ts-${new Date().toISOString().slice(0, 10)}-${String(count + 1).padStart(4, "0")}`;
+    const assignedAgent = await agentForStatus(body.requiresHumanReview ? "human_review" : "new");
 
-    const job = await prisma.articleJob.create({
+    await prisma.articleJob.create({
       data: {
         jobId,
         externalId: jobId,
@@ -65,10 +67,21 @@ export async function POST(request: NextRequest) {
         currentStage: "Entrada",
         status: "new",
         priority: body.priority,
+        assignedAgentId: assignedAgent?.id ?? null,
         hasAffiliate: body.hasAffiliate,
         requiresHumanReview: body.requiresHumanReview
       }
     });
+
+    if (body.requiresHumanReview) {
+      await prisma.humanReview.create({
+        data: {
+          jobId,
+          status: "pending",
+          reason: "Revisao humana solicitada na criacao manual do job."
+        }
+      });
+    }
 
     await createAuditLog({
       jobId,
@@ -82,10 +95,26 @@ export async function POST(request: NextRequest) {
     await dispatchOpenClawCommand({
       type: "job_create",
       jobId,
-      payload: { ...body, jobId, dispatchTo: "orchestrator", source: "techsouls-command-center" }
+      payload: {
+        ...body,
+        jobId,
+        assignedAgentId: assignedAgent?.id,
+        agentSlug: assignedAgent?.slug,
+        dispatchTo: "orchestrator",
+        source: "techsouls-command-center"
+      }
     });
 
-    return NextResponse.json(job, { status: 201 });
+    const createdJob = await prisma.articleJob.findUnique({
+      where: { jobId },
+      include: {
+        assignedAgent: true,
+        humanReviews: { orderBy: { createdAt: "desc" }, take: 1 },
+        sources: { take: 2 }
+      }
+    });
+
+    return NextResponse.json(createdJob, { status: 201 });
   } catch (error) {
     if (isDatabaseUnavailable(error)) {
       return NextResponse.json(mockStore.createTask(body), {

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
-import { DndContext, type DragEndEvent, useDraggable, useDroppable } from "@dnd-kit/core";
+import { DndContext, PointerSensor, type DragEndEvent, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { ExternalLink, Plus, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
+import { ExternalLink, GripVertical, Plus, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -44,18 +44,30 @@ function TaskCard({ job, isAdmin }: { job: ArticleJobDto; isAdmin: boolean }) {
 
   const setPriority = (priority: JobPriority) =>
     action.mutate({ jobId: job.jobId, action: "priority", body: { priority } });
+  const isActionPending = action.isPending;
 
   return (
     <Card
       ref={setNodeRef}
       style={style}
       className="space-y-3 border-border/80 bg-background/80 p-3 shadow-none"
-      {...attributes}
-      {...listeners}
     >
       <div className="space-y-1">
         <div className="flex items-start justify-between gap-2">
-          <p className="line-clamp-2 text-sm font-medium">{job.title}</p>
+          <div className="flex min-w-0 items-start gap-2">
+            {isAdmin ? (
+              <button
+                type="button"
+                className="mt-0.5 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Mover tarefa"
+                {...attributes}
+                {...listeners}
+              >
+                <GripVertical className="size-4" />
+              </button>
+            ) : null}
+            <p className="line-clamp-2 text-sm font-medium">{job.title}</p>
+          </div>
           <JobStatusBadge status={job.status} />
         </div>
         <p className="text-xs text-muted-foreground">{job.jobId}</p>
@@ -91,6 +103,9 @@ function TaskCard({ job, isAdmin }: { job: ArticleJobDto; isAdmin: boolean }) {
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <PriorityBadge priority={job.priority} />
         {job.assignedAgent ? <AgentStatusBadge status={job.assignedAgent.status} /> : null}
+        <span className="max-w-full truncate text-muted-foreground">
+          {job.assignedAgent ? job.assignedAgent.name : "Sem agente"}
+        </span>
         {job.hasAffiliate ? <span className="text-emerald-300">Afiliado</span> : null}
         {job.requiresHumanReview ? <span className="text-purple-300">Revisão</span> : null}
       </div>
@@ -101,14 +116,24 @@ function TaskCard({ job, isAdmin }: { job: ArticleJobDto; isAdmin: boolean }) {
             <ExternalLink /> Abrir
           </Link>
         </Button>
-        <Button size="sm" variant="outline" onClick={() => action.mutate({ jobId: job.jobId, action: "retry" })}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={isActionPending}
+          onClick={() => action.mutate({ jobId: job.jobId, action: "retry" })}
+        >
           <RotateCcw /> Retry
         </Button>
         <Button
           size="sm"
           variant="outline"
+          disabled={isActionPending}
           onClick={() =>
-            action.mutate({ jobId: job.jobId, action: "status", body: { status: "human_review" } })
+            action.mutate({
+              jobId: job.jobId,
+              action: "status",
+              body: { status: "human_review", reason: "Enviado para revisao humana pelo Kanban." }
+            })
           }
         >
           <Send /> Revisão
@@ -116,14 +141,26 @@ function TaskCard({ job, isAdmin }: { job: ArticleJobDto; isAdmin: boolean }) {
         <Button
           size="sm"
           variant="outline"
-          onClick={() => action.mutate({ jobId: job.jobId, action: "status", body: { status: "publishing" } })}
+          disabled={isActionPending}
+          onClick={() =>
+            action.mutate({
+              jobId: job.jobId,
+              action: "status",
+              body: { status: "publishing", reason: "Aprovado manualmente no Kanban." }
+            })
+          }
         >
           <ShieldCheck /> Aprovar
         </Button>
-        <Button size="sm" variant="destructive" onClick={() => action.mutate({ jobId: job.jobId, action: "cancel" })}>
+        <Button
+          size="sm"
+          variant="destructive"
+          disabled={isActionPending}
+          onClick={() => action.mutate({ jobId: job.jobId, action: "cancel" })}
+        >
           <Trash2 /> Cancelar
         </Button>
-        <Select value={job.priority} onValueChange={(value) => setPriority(value as JobPriority)}>
+        <Select value={job.priority} onValueChange={(value) => setPriority(value as JobPriority)} disabled={isActionPending}>
           <SelectTrigger className="h-8 w-28">
             <SelectValue />
           </SelectTrigger>
@@ -183,6 +220,11 @@ export function TasksPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newTask, setNewTask] = useState(initialNewTask);
   const isAdmin = true;
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 }
+    })
+  );
 
   if (isLoading) return <PageLoading />;
   if (error || !data) return <PageError error={error} />;
@@ -312,7 +354,7 @@ export function TasksPage() {
         </div>
       </div>
 
-      <DndContext onDragEnd={onDragEnd}>
+      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4">
           {KANBAN_COLUMNS.map((column) => (
             <KanbanColumn

@@ -3,17 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
+import { agentForStatus } from "@/lib/server/tasks";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(_request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   try {
+    const assignedAgent = await agentForStatus("discarded");
     const job = await prisma.articleJob.update({
       where: { jobId },
       data: {
         status: "discarded",
-        currentStage: "Encerrado"
+        currentStage: "Encerrado",
+        assignedAgentId: assignedAgent?.id ?? undefined
       }
     });
 
@@ -31,10 +34,21 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ j
       type: "task_cancel",
       jobId,
       agentId: job.assignedAgentId,
-      payload: { jobId, status: "discarded", source: "techsouls-command-center" }
+      payload: {
+        jobId,
+        status: "discarded",
+        assignedAgentId: job.assignedAgentId,
+        agentSlug: assignedAgent?.slug,
+        source: "techsouls-command-center"
+      }
     });
 
-    return NextResponse.json(job);
+    const updatedJob = await prisma.articleJob.findUnique({
+      where: { jobId },
+      include: { assignedAgent: true, humanReviews: { orderBy: { createdAt: "desc" }, take: 1 }, sources: { take: 2 } }
+    });
+
+    return NextResponse.json(updatedJob);
   } catch (error) {
     if (isDatabaseUnavailable(error)) {
       const job = mockStore.cancelTask(jobId);

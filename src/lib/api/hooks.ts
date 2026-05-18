@@ -100,7 +100,10 @@ export function useTaskAction() {
       queryClient.invalidateQueries({ queryKey: ["task", variables.jobId] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["queue"] });
+      queryClient.invalidateQueries({ queryKey: ["review"] });
       queryClient.invalidateQueries({ queryKey: ["audit"] });
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      queryClient.invalidateQueries({ queryKey: ["openclaw", "overview"] });
     }
   });
 }
