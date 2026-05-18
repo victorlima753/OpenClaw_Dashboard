@@ -66,6 +66,25 @@ function commandMap() {
   }
 }
 
+const agentDispatchActions = new Set([
+  "job_create",
+  "task_update",
+  "task_retry",
+  "task_cancel",
+  "task_priority",
+  "task_assign",
+  "human_review_approved",
+  "human_review_rejected",
+  "human_review_drafted",
+  "human_review_return_to_writer",
+  "human_review_return_to_validator"
+]);
+
+function defaultCommandMethod(action: string) {
+  if (agentDispatchActions.has(action)) return "agent";
+  return action;
+}
+
 function externalAgentIdForSlug(slug?: string | null) {
   if (!slug) return undefined;
   return agentMap()[slug] ?? slug;
@@ -73,6 +92,10 @@ function externalAgentIdForSlug(slug?: string | null) {
 
 function externalAgentIdForAgent(agent?: Pick<Agent, "slug" | "externalId"> | null) {
   return agent?.externalId ?? externalAgentIdForSlug(agent?.slug);
+}
+
+function orchestratorExternalId() {
+  return externalAgentIdForSlug("techsouls-orchestrator") ?? "orchestrator";
 }
 
 function rootOpenClawPayload(payload: unknown) {
@@ -660,12 +683,14 @@ export async function dispatchOpenClawCommand(input: {
   agentId?: string | null;
 }) {
   try {
-    const type = commandMap()[input.type] ?? input.type;
+    const type = commandMap()[input.type] ?? defaultCommandMethod(input.type);
     const agent = input.agentId
       ? await prisma.agent.findUnique({ where: { id: input.agentId }, select: { id: true, slug: true, externalId: true } })
       : null;
-    const agentExternalId = externalAgentIdForAgent(agent);
-    const payload = {
+    const agentExternalId =
+      externalAgentIdForAgent(agent) ??
+      (agentDispatchActions.has(input.type) ? orchestratorExternalId() : undefined);
+    const payload: Record<string, unknown> = {
       ...input.payload,
       ...(agentExternalId
         ? {
@@ -678,7 +703,28 @@ export async function dispatchOpenClawCommand(input: {
       ...(input.jobId ? { jobId: input.jobId } : {}),
       source: input.payload.source ?? "techsouls-command-center"
     };
-    const result = await getOpenClawAdapter().sendCommand({ type, payload: { ...payload, action: input.type } });
+    const params =
+      type === "agent"
+        ? {
+            agentId: agentExternalId ?? orchestratorExternalId(),
+            sessionKey: `agent:${agentExternalId ?? orchestratorExternalId()}:main`,
+            message:
+              typeof payload.message === "string"
+                ? payload.message
+                : [
+                    `TechSouls Command Center action: ${input.type}`,
+                    "",
+                    "Process the following editorial job/control payload and update the pipeline state through your normal OpenClaw workflow.",
+                    "",
+                    JSON.stringify(payload, null, 2)
+                  ].join("\n"),
+            deliver: false,
+            metadata: payload,
+            source: "techsouls-command-center",
+            action: input.type
+          }
+        : { ...payload, action: input.type };
+    const result = await getOpenClawAdapter().sendCommand({ type, payload: params });
     return result;
   } catch (error) {
     await createAuditLog({

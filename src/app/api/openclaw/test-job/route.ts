@@ -57,7 +57,9 @@ export async function POST(request: NextRequest) {
       severity: command.accepted ? "info" : "warning",
       stage: "OpenClaw",
       decision: command.accepted ? "sent" : "not_sent",
-      message: `Job teste ${jobId} criado e enviado ao Orchestrator OpenClaw.`,
+      message: command.accepted
+        ? `Job teste ${jobId} criado e aceito pelo Orchestrator OpenClaw.`
+        : `Job teste ${jobId} criado, mas o Gateway rejeitou o comando OpenClaw.`,
       inputPayload: body,
       outputPayload: command
     });
