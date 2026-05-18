@@ -24,10 +24,10 @@ OPENCLAW_AGENT_MAP_JSON={"techsouls-orchestrator":"orchestrator","techsouls-rese
 OPENCLAW_WEBHOOK_SECRET=<shared-webhook-secret>
 ```
 
-Optional command aliases if the Gateway expects different RPC names:
+Optional command aliases only if your Gateway or plugin exposes different RPC names. Leave this unset for the default integration; editorial job actions will use the native `agent` RPC automatically.
 
 ```env
-OPENCLAW_COMMAND_MAP_JSON={"job_create":"operator.job.create","task_update":"operator.task.update","task_retry":"operator.task.retry","task_cancel":"operator.task.cancel","task_priority":"operator.task.priority","task_assign":"operator.task.assign","agent_pause":"operator.agent.pause","agent_resume":"operator.agent.resume","agent_restart":"operator.agent.restart","human_review_approved":"operator.review.approve","human_review_rejected":"operator.review.reject","human_review_drafted":"operator.review.draft","human_review_return_to_writer":"operator.review.return_to_writer","human_review_return_to_validator":"operator.review.return_to_validator"}
+OPENCLAW_COMMAND_MAP_JSON={"agent_pause":"operator.agent.pause","agent_resume":"operator.agent.resume","agent_restart":"operator.agent.restart"}
 ```
 
 If this variable is not set, editorial job actions default to the native OpenClaw `agent` RPC. The dashboard sends the action as a structured message to the mapped Orchestrator session (`agent:<orchestratorId>:main`). This matches the Gateway API where direct agent turns use `agent`, while `status` remains a native read RPC.
