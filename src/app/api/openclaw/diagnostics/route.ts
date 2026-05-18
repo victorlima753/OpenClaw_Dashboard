@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isRealOpenClawEnabled } from "@/lib/adapters/openclaw";
 import { prisma } from "@/lib/prisma";
-import { extractOpenClawAgents } from "@/lib/server/openclaw-events";
+import { extractOpenClawAgents, ignoredOpenClawAgentIds } from "@/lib/server/openclaw-events";
 import { apiErrorResponse } from "@/lib/server/api-error";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +18,16 @@ function stringValue(value: unknown) {
 
 function agentMap() {
   try {
-    return process.env.OPENCLAW_AGENT_MAP_JSON ? (JSON.parse(process.env.OPENCLAW_AGENT_MAP_JSON) as Record<string, string>) : {};
+    return process.env.OPENCLAW_AGENT_MAP_JSON
+      ? (JSON.parse(process.env.OPENCLAW_AGENT_MAP_JSON) as Record<string, string | string[]>)
+      : {};
   } catch {
     return {};
   }
+}
+
+function mappedExternalIds() {
+  return Object.values(agentMap()).flatMap((value) => (Array.isArray(value) ? value : [value]));
 }
 
 function settingRecord(value: unknown) {
@@ -75,11 +81,16 @@ export async function GET() {
     const discoveredExternalIds = extractOpenClawAgents(latestSyncLog?.inputPayload)
       .map((agent) => agent.externalId)
       .filter((externalId): externalId is string => Boolean(externalId));
+    const ignoredExternalIds = new Set(ignoredOpenClawAgentIds());
     const knownExternalIds = new Set([
       ...agents.map((agent) => agent.externalId).filter((externalId): externalId is string => Boolean(externalId)),
-      ...Object.values(agentMap())
+      ...mappedExternalIds()
     ]);
-    const unmappedExternalIds = [...new Set(discoveredExternalIds.filter((externalId) => !knownExternalIds.has(externalId)))];
+    const unmappedExternalIds = [
+      ...new Set(
+        discoveredExternalIds.filter((externalId) => !knownExternalIds.has(externalId) && !ignoredExternalIds.has(externalId))
+      )
+    ];
 
     return NextResponse.json({
       gateway: {

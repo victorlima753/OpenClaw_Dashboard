@@ -47,14 +47,25 @@ function normalizeStatus<T extends string>(value: unknown, allowed: readonly T[]
 function agentMap() {
   try {
     const raw = process.env.OPENCLAW_AGENT_MAP_JSON;
-    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    return raw ? (JSON.parse(raw) as Record<string, string | string[]>) : {};
   } catch {
     return {};
   }
 }
 
+function externalAgentIdsForSlug(slug?: string | null) {
+  if (!slug) return [];
+  const mapped = agentMap()[slug];
+  if (Array.isArray(mapped)) return mapped;
+  return mapped ? [mapped] : [];
+}
+
 function reverseAgentMap() {
-  return Object.fromEntries(Object.entries(agentMap()).map(([dashboardSlug, externalId]) => [externalId, dashboardSlug]));
+  return Object.fromEntries(
+    Object.entries(agentMap()).flatMap(([dashboardSlug, externalIds]) =>
+      (Array.isArray(externalIds) ? externalIds : [externalIds]).map((externalId) => [externalId, dashboardSlug])
+    )
+  );
 }
 
 function commandMap() {
@@ -64,6 +75,13 @@ function commandMap() {
   } catch {
     return {};
   }
+}
+
+export function ignoredOpenClawAgentIds() {
+  return (process.env.OPENCLAW_IGNORED_AGENT_IDS ?? "main")
+    .split(",")
+    .map((agentId) => agentId.trim())
+    .filter(Boolean);
 }
 
 const agentDispatchActions = new Set([
@@ -87,7 +105,7 @@ function defaultCommandMethod(action: string) {
 
 function externalAgentIdForSlug(slug?: string | null) {
   if (!slug) return undefined;
-  return agentMap()[slug] ?? slug;
+  return externalAgentIdsForSlug(slug)[0] ?? slug;
 }
 
 function externalAgentIdForAgent(agent?: Pick<Agent, "slug" | "externalId"> | null) {
@@ -96,6 +114,24 @@ function externalAgentIdForAgent(agent?: Pick<Agent, "slug" | "externalId"> | nu
 
 function orchestratorExternalId() {
   return externalAgentIdForSlug("techsouls-orchestrator") ?? "orchestrator";
+}
+
+function openClawAgentMessage(action: string, payload: Record<string, unknown>) {
+  return [
+    `TechSouls Command Center action: ${action}`,
+    "",
+    "Process the following editorial job/control payload and update the pipeline state through your normal OpenClaw workflow.",
+    "",
+    JSON.stringify(
+      {
+        action,
+        source: "techsouls-command-center",
+        payload
+      },
+      null,
+      2
+    )
+  ].join("\n");
 }
 
 function rootOpenClawPayload(payload: unknown) {
@@ -170,7 +206,9 @@ function candidateAgentKeys(input?: string | null) {
   const candidates = new Set<string>();
   if (input) candidates.add(input);
   if (input && reverseMap[input]) candidates.add(reverseMap[input]);
-  if (input && map[input]) candidates.add(map[input]);
+  if (input && map[input]) {
+    for (const externalId of externalAgentIdsForSlug(input)) candidates.add(externalId);
+  }
   return [...candidates].filter(Boolean);
 }
 
@@ -325,17 +363,16 @@ function externalJobId(payloadRecord: JsonRecord | null | undefined, fallbackJob
 export async function syncOpenClawAgentsFromPayload(payload: unknown) {
   const externalAgents = extractOpenClawAgents(payload);
   const activities = extractOpenClawAgentActivities(payload);
-  const map = agentMap();
   const dashboardAgents = await prisma.agent.findMany();
   let updated = 0;
   let activitiesRecorded = 0;
 
   for (const dashboardAgent of dashboardAgents) {
-    const mappedExternalId = map[dashboardAgent.slug];
+    const mappedExternalIds = externalAgentIdsForSlug(dashboardAgent.slug);
     const match = externalAgents.find((agent) => {
       const candidates = [agent.externalId, agent.slug, agent.name].filter(Boolean).map((value) => value!.toLowerCase());
       return (
-        (mappedExternalId && candidates.includes(mappedExternalId.toLowerCase())) ||
+        mappedExternalIds.some((mappedExternalId) => candidates.includes(mappedExternalId.toLowerCase())) ||
         candidates.includes(dashboardAgent.slug.toLowerCase()) ||
         candidates.includes(dashboardAgent.name.toLowerCase())
       );
@@ -346,7 +383,7 @@ export async function syncOpenClawAgentsFromPayload(payload: unknown) {
     await prisma.agent.update({
       where: { id: dashboardAgent.id },
       data: {
-        externalId: match.externalId ?? mappedExternalId ?? dashboardAgent.externalId,
+        externalId: match.externalId ?? mappedExternalIds[0] ?? dashboardAgent.externalId,
         openClawEnabled: booleanValue(match.raw.enabled),
         status: match.status ?? "online",
         currentTaskId: match.currentTaskId ?? dashboardAgent.currentTaskId,
@@ -708,20 +745,12 @@ export async function dispatchOpenClawCommand(input: {
         ? {
             agentId: agentExternalId ?? orchestratorExternalId(),
             sessionKey: `agent:${agentExternalId ?? orchestratorExternalId()}:main`,
+            idempotencyKey: `techsouls:${input.type}:${input.jobId ?? crypto.randomUUID()}:${crypto.randomUUID()}`,
             message:
               typeof payload.message === "string"
                 ? payload.message
-                : [
-                    `TechSouls Command Center action: ${input.type}`,
-                    "",
-                    "Process the following editorial job/control payload and update the pipeline state through your normal OpenClaw workflow.",
-                    "",
-                    JSON.stringify(payload, null, 2)
-                  ].join("\n"),
-            deliver: false,
-            metadata: payload,
-            source: "techsouls-command-center",
-            action: input.type
+                : openClawAgentMessage(input.type, payload),
+            deliver: false
           }
         : { ...payload, action: input.type };
     const result = await getOpenClawAdapter().sendCommand({ type, payload: params });

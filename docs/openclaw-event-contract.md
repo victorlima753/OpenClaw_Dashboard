@@ -20,7 +20,8 @@ OPENCLAW_GATEWAY_WS_URL=ws://techsouls_openclaw_openclaw-gateway:18789
 OPENCLAW_GATEWAY_TOKEN=<gateway-token>
 OPENCLAW_AUTH_MODE=query
 OPENCLAW_CLIENT_MODE=backend
-OPENCLAW_AGENT_MAP_JSON={"techsouls-orchestrator":"orchestrator","techsouls-researcher":"researcher","techsouls-relevance-score":"relevance-classifier","techsouls-news-clustering":"dedup-cluster","techsouls-fact-check":"validator","techsouls-blog-writer":"writer","techsouls-seo":"seo-agent","techsouls-affiliate-router":"affiliate-agent","techsouls-copywriter":"copywriter","techsouls-final-editor":"editor-final","techsouls-compliance":"compliance-agent","techsouls-wordpress-publisher":"wp-publisher","techsouls-social":"social-agent","techsouls-analytics-cro":"analytics-cro","techsouls-audit-log":"audit-agent"}
+OPENCLAW_IGNORED_AGENT_IDS=main
+OPENCLAW_AGENT_MAP_JSON={"techsouls-orchestrator":"orchestrator","techsouls-researcher":"researcher","techsouls-relevance-score":"relevance-classifier","techsouls-news-clustering":"dedup-cluster","techsouls-fact-check":"validator","techsouls-blog-writer":"writer","techsouls-seo":"seo-agent","techsouls-affiliate-router":"affiliate-agent","techsouls-copywriter":"copywriter","techsouls-final-editor":["editorial","editor-final"],"techsouls-compliance":"compliance-agent","techsouls-wordpress-publisher":"wp-publisher","techsouls-social":"social-agent","techsouls-analytics-cro":"analytics-cro","techsouls-audit-log":"audit-agent"}
 OPENCLAW_WEBHOOK_SECRET=<shared-webhook-secret>
 ```
 
@@ -31,6 +32,8 @@ OPENCLAW_COMMAND_MAP_JSON={"agent_pause":"operator.agent.pause","agent_resume":"
 ```
 
 If this variable is not set, editorial job actions default to the native OpenClaw `agent` RPC. The dashboard sends the action as a structured message to the mapped Orchestrator session (`agent:<orchestratorId>:main`). This matches the Gateway API where direct agent turns use `agent`, while `status` remains a native read RPC.
+
+`main` is the default OpenClaw agent id and is ignored by default so the dashboard focuses on the TechSouls editorial pipeline. Agent map values may be a string or an array of aliases; for example `techsouls-final-editor` can match both `editorial` and `editor-final`.
 
 ## Job Update Webhook
 
@@ -165,17 +168,15 @@ The dashboard sends real Gateway commands through WebSocket. By default, editori
 - `human_review_return_to_writer`
 - `human_review_return_to_validator`
 
-Every command payload includes:
+The native `agent` RPC receives only schema-safe root fields:
 
 ```json
 {
-  "source": "techsouls-command-center",
-  "action": "task_retry",
-  "jobId": "ts-2026-05-17-0001",
-  "agentId": "writer",
-  "agentExternalId": "writer",
-  "dashboardAgentId": "clx...",
-  "agentSlug": "techsouls-blog-writer"
+  "agentId": "orchestrator",
+  "sessionKey": "agent:orchestrator:main",
+  "idempotencyKey": "techsouls:job_create:ts-2026-05-17-0001:<uuid>",
+  "message": "TechSouls Command Center action: job_create\n\n{...structured payload...}",
+  "deliver": false
 }
 ```
 
