@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isRealOpenClawEnabled } from "@/lib/adapters/openclaw";
 import { prisma } from "@/lib/prisma";
-import { extractOpenClawAgents, ignoredOpenClawAgentIds } from "@/lib/server/openclaw-events";
+import { extractOpenClawAgents, ignoredOpenClawAgentIds, openClawAgentMap } from "@/lib/server/openclaw-events";
 import { apiErrorResponse } from "@/lib/server/api-error";
 
 export const dynamic = "force-dynamic";
@@ -16,18 +16,8 @@ function stringValue(value: unknown) {
   return typeof value === "string" ? value : undefined;
 }
 
-function agentMap() {
-  try {
-    return process.env.OPENCLAW_AGENT_MAP_JSON
-      ? (JSON.parse(process.env.OPENCLAW_AGENT_MAP_JSON) as Record<string, string | string[]>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
 function mappedExternalIds() {
-  return Object.values(agentMap()).flatMap((value) => (Array.isArray(value) ? value : [value]));
+  return Object.values(openClawAgentMap()).flat();
 }
 
 function settingRecord(value: unknown) {

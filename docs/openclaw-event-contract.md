@@ -21,7 +21,7 @@ OPENCLAW_GATEWAY_TOKEN=<gateway-token>
 OPENCLAW_AUTH_MODE=query
 OPENCLAW_CLIENT_MODE=backend
 OPENCLAW_IGNORED_AGENT_IDS=main
-OPENCLAW_AGENT_MAP_JSON={"techsouls-orchestrator":"orchestrator","techsouls-researcher":"researcher","techsouls-relevance-score":"relevance-classifier","techsouls-news-clustering":"dedup-cluster","techsouls-fact-check":"validator","techsouls-blog-writer":"writer","techsouls-seo":"seo-agent","techsouls-affiliate-router":"affiliate-agent","techsouls-copywriter":"copywriter","techsouls-final-editor":["editorial","editor-final"],"techsouls-compliance":"compliance-agent","techsouls-wordpress-publisher":"wp-publisher","techsouls-social":"social-agent","techsouls-analytics-cro":"analytics-cro","techsouls-audit-log":"audit-agent"}
+OPENCLAW_AGENT_MAP_JSON={"techsouls-final-editor":["editorial","editor-final"]}
 OPENCLAW_WEBHOOK_SECRET=<shared-webhook-secret>
 ```
 
@@ -33,7 +33,7 @@ OPENCLAW_COMMAND_MAP_JSON={"agent_pause":"operator.agent.pause","agent_resume":"
 
 If this variable is not set, editorial job actions default to the native OpenClaw `agent` RPC. The dashboard sends the action as a structured message to the mapped Orchestrator session (`agent:<orchestratorId>:main`). This matches the Gateway API where direct agent turns use `agent`, while `status` remains a native read RPC.
 
-`main` is the default OpenClaw agent id and is ignored by default so the dashboard focuses on the TechSouls editorial pipeline. Agent map values may be a string or an array of aliases; for example `techsouls-final-editor` can match both `editorial` and `editor-final`.
+The dashboard ships with the default TechSouls map for all 15 editorial agents. `OPENCLAW_AGENT_MAP_JSON` is optional and adds aliases on top of that default map. Agent map values may be a string or an array of aliases; for example `techsouls-final-editor` can match both `editorial` and `editor-final`. `main` is the default OpenClaw agent id and is ignored by default so the dashboard focuses on the TechSouls editorial pipeline.
 
 ## Job Update Webhook
 

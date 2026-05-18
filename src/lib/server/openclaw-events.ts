@@ -12,6 +12,23 @@ const agentStatuses: AgentStatus[] = ["online", "idle", "busy", "paused", "offli
 const jobStatuses = Object.keys(JOB_STATUS_META) as JobStatus[];
 const priorities: JobPriority[] = ["low", "normal", "high", "urgent"];
 const severities: LogSeverity[] = ["info", "warning", "error", "critical"];
+const defaultTechSoulsAgentMap: Record<string, string[]> = {
+  "techsouls-orchestrator": ["orchestrator"],
+  "techsouls-researcher": ["researcher"],
+  "techsouls-relevance-score": ["relevance-classifier"],
+  "techsouls-news-clustering": ["dedup-cluster"],
+  "techsouls-fact-check": ["validator"],
+  "techsouls-blog-writer": ["writer"],
+  "techsouls-seo": ["seo-agent"],
+  "techsouls-affiliate-router": ["affiliate-agent"],
+  "techsouls-copywriter": ["copywriter"],
+  "techsouls-final-editor": ["editorial", "editor-final"],
+  "techsouls-compliance": ["compliance-agent"],
+  "techsouls-wordpress-publisher": ["wp-publisher"],
+  "techsouls-social": ["social-agent"],
+  "techsouls-analytics-cro": ["analytics-cro"],
+  "techsouls-audit-log": ["audit-agent"]
+};
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -44,26 +61,33 @@ function normalizeStatus<T extends string>(value: unknown, allowed: readonly T[]
   return allowed.includes(normalized) ? normalized : undefined;
 }
 
-function agentMap() {
+function normalizeAgentMapValue(value: string | string[]) {
+  return Array.isArray(value) ? value : [value];
+}
+
+export function openClawAgentMap() {
+  const map = Object.fromEntries(Object.entries(defaultTechSoulsAgentMap).map(([slug, aliases]) => [slug, [...aliases]]));
   try {
     const raw = process.env.OPENCLAW_AGENT_MAP_JSON;
-    return raw ? (JSON.parse(raw) as Record<string, string | string[]>) : {};
+    const configured = raw ? (JSON.parse(raw) as Record<string, string | string[]>) : {};
+    for (const [slug, aliases] of Object.entries(configured)) {
+      map[slug] = [...new Set([...(map[slug] ?? []), ...normalizeAgentMapValue(aliases)])];
+    }
   } catch {
-    return {};
+    return map;
   }
+  return map;
 }
 
 function externalAgentIdsForSlug(slug?: string | null) {
   if (!slug) return [];
-  const mapped = agentMap()[slug];
-  if (Array.isArray(mapped)) return mapped;
-  return mapped ? [mapped] : [];
+  return openClawAgentMap()[slug] ?? [];
 }
 
 function reverseAgentMap() {
   return Object.fromEntries(
-    Object.entries(agentMap()).flatMap(([dashboardSlug, externalIds]) =>
-      (Array.isArray(externalIds) ? externalIds : [externalIds]).map((externalId) => [externalId, dashboardSlug])
+    Object.entries(openClawAgentMap()).flatMap(([dashboardSlug, externalIds]) =>
+      externalIds.map((externalId) => [externalId, dashboardSlug])
     )
   );
 }
@@ -201,7 +225,7 @@ function statusFromEvent(event: string) {
 }
 
 function candidateAgentKeys(input?: string | null) {
-  const map = agentMap();
+  const map = openClawAgentMap();
   const reverseMap = reverseAgentMap();
   const candidates = new Set<string>();
   if (input) candidates.add(input);

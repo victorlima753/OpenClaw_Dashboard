@@ -1,7 +1,23 @@
-import { describe, expect, it } from "vitest";
-import { extractOpenClawAgentActivities, extractOpenClawAgents } from "./openclaw-events";
+import { describe, expect, it, vi } from "vitest";
+import { extractOpenClawAgentActivities, extractOpenClawAgents, openClawAgentMap } from "./openclaw-events";
 
 describe("extractOpenClawAgents", () => {
+  it("ships the TechSouls agent map with editorial aliases by default", () => {
+    vi.stubEnv("OPENCLAW_AGENT_MAP_JSON", "");
+
+    expect(openClawAgentMap()["techsouls-final-editor"]).toEqual(["editorial", "editor-final"]);
+
+    vi.unstubAllEnvs();
+  });
+
+  it("merges configured aliases with the built-in TechSouls map", () => {
+    vi.stubEnv("OPENCLAW_AGENT_MAP_JSON", JSON.stringify({ "techsouls-final-editor": "final-reviewer" }));
+
+    expect(openClawAgentMap()["techsouls-final-editor"]).toEqual(["editorial", "editor-final", "final-reviewer"]);
+
+    vi.unstubAllEnvs();
+  });
+
   it("reads the Gateway status response where agents are keyed by agentId", () => {
     const agents = extractOpenClawAgents({
       type: "res",
