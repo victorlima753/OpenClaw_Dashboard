@@ -137,12 +137,14 @@ export function OpenClawPage() {
             <CardTitle>Mapa de agentes</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[980px] text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr className="border-b">
                   <th className="py-2 font-medium">Agente</th>
                   <th className="py-2 font-medium">Slug dashboard</th>
-                  <th className="py-2 font-medium">ID OpenClaw</th>
+                  <th className="py-2 font-medium">ID ativo</th>
+                  <th className="py-2 font-medium">Aliases OpenClaw</th>
+                  <th className="py-2 font-medium">Descobertos</th>
                   <th className="py-2 font-medium">Scheduler</th>
                   <th className="py-2 font-medium">Status</th>
                   <th className="py-2 font-medium">Ultimo sync</th>
@@ -158,6 +160,28 @@ export function OpenClawPage() {
                     </td>
                     <td className="py-3 text-muted-foreground">{agent.slug}</td>
                     <td className="py-3">{agent.externalId ?? "-"}</td>
+                    <td className="py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {agent.mappedExternalIds.length === 0
+                          ? "-"
+                          : agent.mappedExternalIds.map((externalId) => (
+                            <Badge key={externalId} className="border-sky-500/25 bg-sky-500/10 text-sky-200">
+                                {externalId}
+                              </Badge>
+                            ))}
+                      </div>
+                    </td>
+                    <td className="py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {agent.discoveredExternalIds.length === 0
+                          ? "-"
+                          : agent.discoveredExternalIds.map((externalId) => (
+                              <Badge key={externalId} className="border-emerald-500/25 bg-emerald-500/10 text-emerald-200">
+                                {externalId}
+                              </Badge>
+                            ))}
+                      </div>
+                    </td>
                     <td className="py-3">
                       <Badge
                         className={

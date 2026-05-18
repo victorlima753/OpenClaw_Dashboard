@@ -317,6 +317,32 @@ export function extractOpenClawAgents(payload: unknown) {
   return [...agentsById.values()];
 }
 
+type OpenClawAgentCandidate = ReturnType<typeof extractOpenClawAgents>[number];
+
+function normalizedExternalAgentValues(agent: OpenClawAgentCandidate) {
+  return [agent.externalId, agent.slug, agent.name].filter(Boolean).map((value) => value!.toLowerCase());
+}
+
+function externalAgentMatches(agent: OpenClawAgentCandidate, key: string) {
+  return normalizedExternalAgentValues(agent).includes(key.toLowerCase());
+}
+
+export function bestOpenClawAgentForDashboardAgent(
+  dashboardAgent: Pick<Agent, "slug" | "name">,
+  externalAgents: OpenClawAgentCandidate[]
+) {
+  const mappedExternalIds = externalAgentIdsForSlug(dashboardAgent.slug);
+  for (const mappedExternalId of mappedExternalIds) {
+    const match = externalAgents.find((agent) => externalAgentMatches(agent, mappedExternalId));
+    if (match) return match;
+  }
+
+  return externalAgents.find((agent) => {
+    const candidates = normalizedExternalAgentValues(agent);
+    return candidates.includes(dashboardAgent.slug.toLowerCase()) || candidates.includes(dashboardAgent.name.toLowerCase());
+  });
+}
+
 export function extractOpenClawAgentActivities(payload: unknown) {
   const rootPayload = rootOpenClawPayload(payload);
   const sessions = isRecord(rootPayload) && isRecord(rootPayload.sessions) ? rootPayload.sessions : undefined;
@@ -393,14 +419,7 @@ export async function syncOpenClawAgentsFromPayload(payload: unknown) {
 
   for (const dashboardAgent of dashboardAgents) {
     const mappedExternalIds = externalAgentIdsForSlug(dashboardAgent.slug);
-    const match = externalAgents.find((agent) => {
-      const candidates = [agent.externalId, agent.slug, agent.name].filter(Boolean).map((value) => value!.toLowerCase());
-      return (
-        mappedExternalIds.some((mappedExternalId) => candidates.includes(mappedExternalId.toLowerCase())) ||
-        candidates.includes(dashboardAgent.slug.toLowerCase()) ||
-        candidates.includes(dashboardAgent.name.toLowerCase())
-      );
-    });
+    const match = bestOpenClawAgentForDashboardAgent(dashboardAgent, externalAgents);
 
     if (!match) continue;
 

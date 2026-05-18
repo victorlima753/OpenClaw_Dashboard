@@ -68,9 +68,11 @@ export async function GET() {
     const workerLastSeenMs = workerLastSeenAt ? new Date(workerLastSeenAt).getTime() : 0;
     const workerConnected = workerLastSeenMs > 0 && Date.now() - workerLastSeenMs < 2 * 60_000;
 
+    const agentMap = openClawAgentMap();
     const discoveredExternalIds = extractOpenClawAgents(latestSyncLog?.inputPayload)
       .map((agent) => agent.externalId)
       .filter((externalId): externalId is string => Boolean(externalId));
+    const discoveredExternalIdSet = new Set(discoveredExternalIds);
     const ignoredExternalIds = new Set(ignoredOpenClawAgentIds());
     const knownExternalIds = new Set([
       ...agents.map((agent) => agent.externalId).filter((externalId): externalId is string => Boolean(externalId)),
@@ -107,6 +109,8 @@ export async function GET() {
           name: agent.name,
           slug: agent.slug,
           externalId: agent.externalId,
+          mappedExternalIds: agentMap[agent.slug] ?? [],
+          discoveredExternalIds: (agentMap[agent.slug] ?? []).filter((externalId) => discoveredExternalIdSet.has(externalId)),
           openClawEnabled: agent.openClawEnabled,
           status: agent.status,
           lastOpenClawSyncAt: agent.lastOpenClawSyncAt?.toISOString() ?? null,

@@ -191,6 +191,8 @@ export type OpenClawOverview = {
       name: string;
       slug: string;
       externalId: string | null;
+      mappedExternalIds: string[];
+      discoveredExternalIds: string[];
       openClawEnabled: boolean | null;
       status: AgentStatus;
       lastOpenClawSyncAt: string | null;

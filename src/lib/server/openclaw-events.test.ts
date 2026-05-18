@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractOpenClawAgentActivities, extractOpenClawAgents, openClawAgentMap } from "./openclaw-events";
+import {
+  bestOpenClawAgentForDashboardAgent,
+  extractOpenClawAgentActivities,
+  extractOpenClawAgents,
+  openClawAgentMap
+} from "./openclaw-events";
 
 describe("extractOpenClawAgents", () => {
   it("ships the TechSouls agent map with editorial aliases by default", () => {
@@ -98,5 +103,30 @@ describe("extractOpenClawAgents", () => {
         outputTokens: 25
       })
     ]);
+  });
+
+  it("prefers configured alias order when multiple external IDs map to one dashboard agent", () => {
+    vi.stubEnv("OPENCLAW_AGENT_MAP_JSON", "");
+    const agents = extractOpenClawAgents({
+      type: "res",
+      ok: true,
+      payload: {
+        heartbeat: {
+          agents: [
+            { agentId: "editor-final", enabled: false, every: "disabled" },
+            { agentId: "editorial", enabled: false, every: "disabled" }
+          ]
+        }
+      }
+    });
+
+    expect(
+      bestOpenClawAgentForDashboardAgent(
+        { slug: "techsouls-final-editor", name: "Editor Final" },
+        agents
+      )
+    ).toEqual(expect.objectContaining({ externalId: "editorial" }));
+
+    vi.unstubAllEnvs();
   });
 });
