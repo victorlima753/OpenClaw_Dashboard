@@ -10,7 +10,14 @@ describe("extractOpenClawAgents", () => {
   it("ships the TechSouls agent map with editorial aliases by default", () => {
     vi.stubEnv("OPENCLAW_AGENT_MAP_JSON", "");
 
-    expect(openClawAgentMap()["techsouls-final-editor"]).toEqual(["editorial", "editor-final"]);
+    expect(openClawAgentMap()["techsouls-trend-editorial"]).toEqual([
+      "editorial",
+      "trend-editorial",
+      "trend-editorial-agent",
+      "editorial-agent",
+      "trend-agent"
+    ]);
+    expect(openClawAgentMap()["techsouls-final-editor"]).toEqual(["editor-final"]);
 
     vi.unstubAllEnvs();
   });
@@ -18,7 +25,19 @@ describe("extractOpenClawAgents", () => {
   it("merges configured aliases with the built-in TechSouls map", () => {
     vi.stubEnv("OPENCLAW_AGENT_MAP_JSON", JSON.stringify({ "techsouls-final-editor": "final-reviewer" }));
 
-    expect(openClawAgentMap()["techsouls-final-editor"]).toEqual(["editorial", "editor-final", "final-reviewer"]);
+    expect(openClawAgentMap()["techsouls-final-editor"]).toEqual(["editor-final", "final-reviewer"]);
+
+    vi.unstubAllEnvs();
+  });
+
+  it("does not let legacy config map editorial back to the final editor", () => {
+    vi.stubEnv(
+      "OPENCLAW_AGENT_MAP_JSON",
+      JSON.stringify({ "techsouls-final-editor": ["editorial", "editor-final"] })
+    );
+
+    expect(openClawAgentMap()["techsouls-trend-editorial"]).toContain("editorial");
+    expect(openClawAgentMap()["techsouls-final-editor"]).toEqual(["editor-final"]);
 
     vi.unstubAllEnvs();
   });
@@ -105,7 +124,7 @@ describe("extractOpenClawAgents", () => {
     ]);
   });
 
-  it("prefers configured alias order when multiple external IDs map to one dashboard agent", () => {
+  it("keeps editorial and editor-final mapped to independent dashboard agents", () => {
     vi.stubEnv("OPENCLAW_AGENT_MAP_JSON", "");
     const agents = extractOpenClawAgents({
       type: "res",
@@ -122,10 +141,16 @@ describe("extractOpenClawAgents", () => {
 
     expect(
       bestOpenClawAgentForDashboardAgent(
-        { slug: "techsouls-final-editor", name: "Editor Final" },
+        { slug: "techsouls-trend-editorial", name: "Trend / Editorial Agent" },
         agents
       )
     ).toEqual(expect.objectContaining({ externalId: "editorial" }));
+    expect(
+      bestOpenClawAgentForDashboardAgent(
+        { slug: "techsouls-final-editor", name: "Editor Final" },
+        agents
+      )
+    ).toEqual(expect.objectContaining({ externalId: "editor-final" }));
 
     vi.unstubAllEnvs();
   });

@@ -103,6 +103,17 @@ export const seedAgents: SeedAgent[] = [
     averageProcessingTimeMs: 42000
   },
   {
+    name: "Trend / Editorial Agent",
+    slug: "techsouls-trend-editorial",
+    description: "Monitora tendencias, identifica pautas promissoras e prioriza sinais editoriais para o pipeline.",
+    skillName: "techsouls-trend-editorial",
+    status: "online",
+    totalTasksProcessed: 611,
+    successCount: 589,
+    failureCount: 22,
+    averageProcessingTimeMs: 118000
+  },
+  {
     name: "Researcher",
     slug: "techsouls-researcher",
     description: "Coleta sinais, fontes e contexto para novas pautas de tecnologia.",

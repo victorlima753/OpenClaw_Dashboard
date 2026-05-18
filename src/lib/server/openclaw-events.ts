@@ -14,6 +14,7 @@ const priorities: JobPriority[] = ["low", "normal", "high", "urgent"];
 const severities: LogSeverity[] = ["info", "warning", "error", "critical"];
 const defaultTechSoulsAgentMap: Record<string, string[]> = {
   "techsouls-orchestrator": ["orchestrator"],
+  "techsouls-trend-editorial": ["editorial", "trend-editorial", "trend-editorial-agent", "editorial-agent", "trend-agent"],
   "techsouls-researcher": ["researcher"],
   "techsouls-relevance-score": ["relevance-classifier"],
   "techsouls-news-clustering": ["dedup-cluster"],
@@ -22,12 +23,29 @@ const defaultTechSoulsAgentMap: Record<string, string[]> = {
   "techsouls-seo": ["seo-agent"],
   "techsouls-affiliate-router": ["affiliate-agent"],
   "techsouls-copywriter": ["copywriter"],
-  "techsouls-final-editor": ["editorial", "editor-final"],
+  "techsouls-final-editor": ["editor-final"],
   "techsouls-compliance": ["compliance-agent"],
   "techsouls-wordpress-publisher": ["wp-publisher"],
   "techsouls-social": ["social-agent"],
   "techsouls-analytics-cro": ["analytics-cro"],
   "techsouls-audit-log": ["audit-agent"]
+};
+
+const canonicalOpenClawAgents: Record<
+  string,
+  {
+    name: string;
+    description: string;
+    skillName: string;
+    averageProcessingTimeMs: number;
+  }
+> = {
+  "techsouls-trend-editorial": {
+    name: "Trend / Editorial Agent",
+    description: "Monitora tendencias, identifica pautas editoriais promissoras e prioriza sinais para o pipeline TechSouls.",
+    skillName: "techsouls-trend-editorial",
+    averageProcessingTimeMs: 118000
+  }
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -76,6 +94,10 @@ export function openClawAgentMap() {
   } catch {
     return map;
   }
+  const trendEditorialAliases = new Set(defaultTechSoulsAgentMap["techsouls-trend-editorial"].map((alias) => alias.toLowerCase()));
+  map["techsouls-final-editor"] = (map["techsouls-final-editor"] ?? []).filter(
+    (alias) => !trendEditorialAliases.has(alias.toLowerCase())
+  );
   return map;
 }
 
@@ -343,6 +365,38 @@ export function bestOpenClawAgentForDashboardAgent(
   });
 }
 
+async function ensureCanonicalDashboardAgentsForOpenClaw(externalAgents: OpenClawAgentCandidate[]) {
+  const existingAgents = await prisma.agent.findMany({ select: { slug: true } });
+  const existingSlugs = new Set(existingAgents.map((agent) => agent.slug));
+
+  for (const [slug, definition] of Object.entries(canonicalOpenClawAgents)) {
+    if (existingSlugs.has(slug)) continue;
+    const mappedExternalIds = externalAgentIdsForSlug(slug);
+    const match = externalAgents.find((agent) =>
+      mappedExternalIds.some((externalId) => externalAgentMatches(agent, externalId))
+    );
+    if (!match) continue;
+
+    await prisma.agent.create({
+      data: {
+        name: definition.name,
+        slug,
+        externalId: match.externalId ?? mappedExternalIds[0],
+        description: definition.description,
+        skillName: definition.skillName,
+        status: match.status ?? "online",
+        currentTaskId: match.currentTaskId,
+        lastHeartbeatAt: new Date(),
+        lastActivityAt: new Date(),
+        lastOpenClawSyncAt: new Date(),
+        openClawEnabled: booleanValue(match.raw.enabled),
+        averageProcessingTimeMs: definition.averageProcessingTimeMs
+      }
+    });
+    existingSlugs.add(slug);
+  }
+}
+
 export function extractOpenClawAgentActivities(payload: unknown) {
   const rootPayload = rootOpenClawPayload(payload);
   const sessions = isRecord(rootPayload) && isRecord(rootPayload.sessions) ? rootPayload.sessions : undefined;
@@ -413,6 +467,7 @@ function externalJobId(payloadRecord: JsonRecord | null | undefined, fallbackJob
 export async function syncOpenClawAgentsFromPayload(payload: unknown) {
   const externalAgents = extractOpenClawAgents(payload);
   const activities = extractOpenClawAgentActivities(payload);
+  await ensureCanonicalDashboardAgentsForOpenClaw(externalAgents);
   const dashboardAgents = await prisma.agent.findMany();
   let updated = 0;
   let activitiesRecorded = 0;

@@ -4,7 +4,7 @@ import { seedAgents, seedJobs, seedLogs, seedReviews, seedSources } from "./seed
 
 describe("seed data", () => {
   it("covers the required operational minimums", () => {
-    expect(seedAgents).toHaveLength(15);
+    expect(seedAgents).toHaveLength(16);
     expect(seedJobs.length).toBeGreaterThanOrEqual(20);
     expect(seedLogs.length).toBeGreaterThanOrEqual(100);
     expect(seedReviews.length).toBeGreaterThanOrEqual(5);
