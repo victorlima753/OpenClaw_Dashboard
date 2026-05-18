@@ -4,21 +4,25 @@ import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 import { agentForStatus } from "@/lib/server/tasks";
+import { reconcileAgentsForJobChange } from "@/lib/server/agent-state";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(_request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   try {
+    const previousJob = await prisma.articleJob.findUnique({ where: { jobId }, select: { assignedAgentId: true } });
     const assignedAgent = await agentForStatus("discarded");
     const job = await prisma.articleJob.update({
       where: { jobId },
       data: {
         status: "discarded",
         currentStage: "Encerrado",
-        assignedAgentId: assignedAgent?.id ?? undefined
+        assignedAgentId: assignedAgent?.id ?? undefined,
+        requiresHumanReview: false
       }
     });
+    await reconcileAgentsForJobChange(previousJob?.assignedAgentId, job.assignedAgentId);
 
     await createAuditLog({
       jobId,

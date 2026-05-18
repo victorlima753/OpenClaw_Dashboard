@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
+import { reconcileAgentWorkState } from "@/lib/server/agent-state";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,9 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   try {
     const agent = await prisma.agent.update({
       where: { id },
-      data: { status: "online", lastHeartbeatAt: new Date(), lastActivityAt: new Date() }
+      data: { lastHeartbeatAt: new Date() }
     });
+    const reconciledAgent = await reconcileAgentWorkState(agent.id, { wakeOffline: true });
 
     await createAuditLog({
       agentId: agent.id,
@@ -27,7 +29,7 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
       payload: { agentId: agent.id, agentSlug: agent.slug, dry_run: false, source: "techsouls-command-center" }
     });
 
-    return NextResponse.json(agent);
+    return NextResponse.json(reconciledAgent ?? agent);
   } catch (error) {
     if (isDatabaseUnavailable(error)) {
       const agent = mockStore.setAgentStatus(id, "online", "agent_heartbeat", "Heartbeat mockado recebido.");

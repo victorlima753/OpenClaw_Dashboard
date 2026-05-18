@@ -4,6 +4,7 @@ import { createAuditLog } from "@/lib/server/audit";
 import { reviewDecisionSchema } from "@/lib/validation/schemas";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
+import { updateJobStatus } from "@/lib/server/tasks";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +22,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       }
     });
 
-    const job = await prisma.articleJob.update({
-      where: { jobId },
-      data: { status: "writing", currentStage: "Writer", requiresHumanReview: false }
-    });
+    const job = await updateJobStatus(jobId, "writing", body.comment ?? "Devolvido ao Writer em revisao humana.");
 
     await createAuditLog({
       jobId,

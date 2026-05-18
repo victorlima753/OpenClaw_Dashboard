@@ -6,6 +6,7 @@ import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 import { apiErrorResponse } from "@/lib/server/api-error";
 import { agentForStatus } from "@/lib/server/tasks";
+import { reconcileAgentWorkState } from "@/lib/server/agent-state";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
         requiresHumanReview: body.requiresHumanReview
       }
     });
+    await reconcileAgentWorkState(assignedAgent?.id);
 
     if (body.requiresHumanReview) {
       await prisma.humanReview.create({

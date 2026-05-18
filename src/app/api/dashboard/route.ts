@@ -4,6 +4,7 @@ import { JOB_STATUS_META, RUNNING_STATUSES } from "@/lib/domain";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { apiErrorResponse } from "@/lib/server/api-error";
 import { isRealOpenClawEnabled } from "@/lib/adapters/openclaw";
+import { deriveAgentWorkStatus } from "@/lib/server/agent-state";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,16 @@ export async function GET() {
     const totalTerminal = completed + failed;
     const averageProcessingTimeMs =
       agents.reduce((sum, agent) => sum + agent.averageProcessingTimeMs, 0) / Math.max(1, agents.length);
+    const activeJobByAgentId = new Map<string, (typeof jobs)[number]>();
+    for (const job of jobs.filter((job) => RUNNING_STATUSES.includes(job.status))) {
+      if (job.assignedAgentId && !activeJobByAgentId.has(job.assignedAgentId)) {
+        activeJobByAgentId.set(job.assignedAgentId, job);
+      }
+    }
+    const agentsWithDerivedStatus = agents.map((agent) => ({
+      ...agent,
+      status: deriveAgentWorkStatus(agent, activeJobByAgentId.get(agent.id) ?? null)
+    }));
 
     const tasksByStatus = Object.entries(
       jobs.reduce<Record<string, number>>((acc, job) => {
@@ -73,10 +84,10 @@ export async function GET() {
 
     return NextResponse.json({
       totalAgents: agents.length,
-      agentsOnline: agents.filter((agent) => ["online", "busy", "idle"].includes(agent.status)).length,
-      agentsBusy: agents.filter((agent) => agent.status === "busy").length,
-      agentsOffline: agents.filter((agent) => agent.status === "offline").length,
-      agentsError: agents.filter((agent) => agent.status === "error").length,
+      agentsOnline: agentsWithDerivedStatus.filter((agent) => ["online", "busy", "idle"].includes(agent.status)).length,
+      agentsBusy: agentsWithDerivedStatus.filter((agent) => agent.status === "busy").length,
+      agentsOffline: agentsWithDerivedStatus.filter((agent) => agent.status === "offline").length,
+      agentsError: agentsWithDerivedStatus.filter((agent) => agent.status === "error").length,
       queuedTasks: jobs.filter((job) => job.status === "new").length,
       runningTasks: jobs.filter((job) => RUNNING_STATUSES.includes(job.status)).length,
       humanReviewTasks: jobs.filter((job) => job.status === "human_review").length,

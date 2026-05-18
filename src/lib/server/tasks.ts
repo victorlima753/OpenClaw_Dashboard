@@ -3,6 +3,7 @@ import { JOB_STATUS_META } from "@/lib/domain";
 import type { JobStatus } from "@/lib/types";
 import { createAuditLog } from "./audit";
 import { dispatchOpenClawCommand } from "./openclaw-events";
+import { reconcileAgentsForJobChange } from "./agent-state";
 
 const statusAgentSlug: Partial<Record<JobStatus, string>> = {
   new: "techsouls-trend-editorial",
@@ -38,6 +39,10 @@ export async function agentForStatus(status: JobStatus) {
 }
 
 export async function updateJobStatus(jobId: string, status: JobStatus, reason?: string) {
+  const previousJob = await prisma.articleJob.findUnique({
+    where: { jobId },
+    select: { assignedAgentId: true }
+  });
   const assignedAgent = await agentForStatus(status);
   const job = await prisma.articleJob.update({
     where: { jobId },
@@ -45,7 +50,7 @@ export async function updateJobStatus(jobId: string, status: JobStatus, reason?:
       status,
       currentStage: jobStatusToStage(status),
       assignedAgentId: assignedAgent?.id ?? undefined,
-      requiresHumanReview: status === "human_review" ? true : undefined,
+      requiresHumanReview: status === "human_review",
       errorMessage: status === "failed" ? reason ?? "Falha registrada manualmente." : undefined
     }
   });
@@ -99,6 +104,8 @@ export async function updateJobStatus(jobId: string, status: JobStatus, reason?:
       }
     });
   }
+
+  await reconcileAgentsForJobChange(previousJob?.assignedAgentId, job.assignedAgentId);
 
   await createAuditLog({
     jobId,

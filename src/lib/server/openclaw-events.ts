@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { JOB_STATUS_META } from "@/lib/domain";
 import { getOpenClawAdapter } from "@/lib/adapters/openclaw";
 import { createAuditLog } from "@/lib/server/audit";
+import { reconcileAgentsForJobChange } from "@/lib/server/agent-state";
 import type { AgentStatus, JobPriority, JobStatus, LogSeverity } from "@/lib/types";
 import type { Agent, Prisma } from "@prisma/client";
 
@@ -284,8 +285,7 @@ function heartbeatStatus(agentId: string, payload: unknown): AgentStatus | undef
 
 function normalizeOpenClawAgent(agent: JsonRecord, fallbackId?: string, rootPayload?: unknown) {
   const id = stringValue(agent.id) ?? stringValue(agent.agentId) ?? stringValue(agent.slug) ?? fallbackId;
-  const scheduleStatus =
-    typeof agent.enabled === "boolean" ? (agent.enabled ? "online" : "offline") : undefined;
+  const scheduleStatus = agent.enabled === true ? "online" : undefined;
   return {
     externalId: id,
     slug: stringValue(agent.slug) ?? stringValue(agent.name) ?? id,
@@ -483,10 +483,9 @@ export async function syncOpenClawAgentsFromPayload(payload: unknown) {
       data: {
         externalId: match.externalId ?? mappedExternalIds[0] ?? dashboardAgent.externalId,
         openClawEnabled: booleanValue(match.raw.enabled),
-        status: match.status ?? "online",
+        status: ["paused", "error"].includes(dashboardAgent.status) ? dashboardAgent.status : match.status ?? dashboardAgent.status,
         currentTaskId: match.currentTaskId ?? dashboardAgent.currentTaskId,
         lastHeartbeatAt: new Date(),
-        lastActivityAt: new Date(),
         lastOpenClawSyncAt: new Date()
       }
     });
@@ -498,11 +497,9 @@ export async function syncOpenClawAgentsFromPayload(payload: unknown) {
     if (!dashboardAgent) continue;
 
     const activityAt = activity.updatedAt ?? new Date();
-    const ageMs = Date.now() - activityAt.getTime();
     await prisma.agent.update({
       where: { id: dashboardAgent.id },
       data: {
-        status: ageMs >= 0 && ageMs < 5 * 60_000 ? "busy" : undefined,
         lastActivityAt: activityAt,
         lastHeartbeatAt: new Date(),
         lastOpenClawSyncAt: new Date(),
@@ -664,7 +661,7 @@ export async function applyOpenClawTaskUpdate(input: {
     const articleMarkdown = firstString(payloadRecord, ["articleMarkdown", "article_markdown", "article", "content", "body"]);
     const openClawExternalId = externalJobId(payloadRecord, jobId);
 
-    const job = await prisma.articleJob.upsert({
+    await prisma.articleJob.upsert({
       where: { jobId },
       create: {
         jobId,
@@ -772,12 +769,11 @@ export async function applyOpenClawTaskUpdate(input: {
       await prisma.agent.update({
         where: { id: agent.id },
         data: {
-          currentTaskId: job.jobId,
-          lastActivityAt: new Date(),
-          status: status && ["published", "drafted", "discarded", "failed"].includes(status) ? "online" : "busy"
+          lastActivityAt: new Date()
         }
       });
     }
+    await reconcileAgentsForJobChange(existing?.assignedAgentId, agent?.id);
   }
 
   await createAuditLog({

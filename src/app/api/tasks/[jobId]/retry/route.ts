@@ -6,12 +6,14 @@ import type { ArticleJobDto } from "@/lib/types";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
 import { agentForStatus } from "@/lib/server/tasks";
+import { reconcileAgentsForJobChange } from "@/lib/server/agent-state";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(_request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   try {
+    const previousJob = await prisma.articleJob.findUnique({ where: { jobId }, select: { assignedAgentId: true } });
     const assignedAgent = await agentForStatus("new");
     const job = await prisma.articleJob.update({
       where: { jobId },
@@ -24,6 +26,7 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ j
       },
       include: { assignedAgent: true }
     });
+    await reconcileAgentsForJobChange(previousJob?.assignedAgentId, job.assignedAgentId);
 
     const queueResult = await mockQueueAdapter.retry(job as unknown as ArticleJobDto);
 

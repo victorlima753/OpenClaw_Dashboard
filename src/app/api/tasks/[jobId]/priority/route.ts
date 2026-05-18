@@ -4,6 +4,7 @@ import { createAuditLog } from "@/lib/server/audit";
 import { priorityUpdateSchema } from "@/lib/validation/schemas";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { dispatchOpenClawCommand } from "@/lib/server/openclaw-events";
+import { apiErrorResponse } from "@/lib/server/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
   try {
     const job = await prisma.articleJob.update({
       where: { jobId },
-      data: { priority: body.priority }
+      data: { priority: body.priority },
+      include: {
+        assignedAgent: true,
+        humanReviews: { orderBy: { createdAt: "desc" }, take: 1 },
+        sources: { take: 2 }
+      }
     });
 
     await createAuditLog({
@@ -41,6 +47,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
         ? NextResponse.json(job, { headers: { "x-techsouls-data-source": "mock" } })
         : NextResponse.json({ error: "Tarefa nao encontrada." }, { status: 404 });
     }
-    throw error;
+    return apiErrorResponse(error, "api/tasks/priority");
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/server/audit";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
+import { reconcileAgentWorkState } from "@/lib/server/agent-state";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +11,9 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   try {
     const agent = await prisma.agent.update({
       where: { id },
-      data: { status: "online", failureCount: { decrement: 0 }, lastActivityAt: new Date() }
+      data: { failureCount: { decrement: 0 }, lastActivityAt: new Date() }
     });
+    const reconciledAgent = await reconcileAgentWorkState(agent.id, { wakeOffline: true, clearPaused: true, clearError: true });
 
     await createAuditLog({
       agentId: agent.id,
@@ -20,7 +22,7 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
       message: `Erros limpos manualmente para ${agent.name}.`
     });
 
-    return NextResponse.json(agent);
+    return NextResponse.json(reconciledAgent ?? agent);
   } catch (error) {
     if (isDatabaseUnavailable(error)) {
       const agent = mockStore.setAgentStatus(id, "online", "errors_cleared", "Erros limpos em modo mock.");

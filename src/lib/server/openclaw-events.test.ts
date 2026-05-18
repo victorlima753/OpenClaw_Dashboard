@@ -82,7 +82,7 @@ describe("extractOpenClawAgents", () => {
 
     expect(agents).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ externalId: "orchestrator", status: "offline" }),
+        expect.objectContaining({ externalId: "orchestrator", status: undefined }),
         expect.objectContaining({ externalId: "writer", status: "online" })
       ])
     );

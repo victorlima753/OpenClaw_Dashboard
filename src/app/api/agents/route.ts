@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isDatabaseUnavailable, mockStore } from "@/lib/server/mock-store";
 import { apiErrorResponse } from "@/lib/server/api-error";
+import { deriveAgentWorkStatus } from "@/lib/server/agent-state";
+import { RUNNING_STATUSES } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -17,17 +19,30 @@ export async function GET() {
       }
     });
 
-    const currentTaskIds = agents.map((agent) => agent.currentTaskId).filter(Boolean) as string[];
-    const tasks = await prisma.articleJob.findMany({
-      where: { jobId: { in: currentTaskIds } }
+    const runningJobs = await prisma.articleJob.findMany({
+      where: {
+        assignedAgentId: { in: agents.map((agent) => agent.id) },
+        status: { in: RUNNING_STATUSES as never[] }
+      },
+      orderBy: { updatedAt: "desc" }
     });
-    const tasksByJobId = new Map(tasks.map((task) => [task.jobId, task]));
+    const activeJobByAgentId = new Map<string, (typeof runningJobs)[number]>();
+    for (const job of runningJobs) {
+      if (job.assignedAgentId && !activeJobByAgentId.has(job.assignedAgentId)) {
+        activeJobByAgentId.set(job.assignedAgentId, job);
+      }
+    }
 
     return NextResponse.json(
-      agents.map((agent) => ({
-        ...agent,
-        currentTask: agent.currentTaskId ? tasksByJobId.get(agent.currentTaskId) ?? null : null
-      }))
+      agents.map((agent) => {
+        const activeJob = activeJobByAgentId.get(agent.id) ?? null;
+        return {
+          ...agent,
+          status: deriveAgentWorkStatus(agent, activeJob),
+          currentTaskId: activeJob?.jobId ?? null,
+          currentTask: activeJob
+        };
+      })
     );
   } catch (error) {
     if (isDatabaseUnavailable(error)) {

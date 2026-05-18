@@ -3,6 +3,8 @@ import { isRealOpenClawEnabled } from "@/lib/adapters/openclaw";
 import { prisma } from "@/lib/prisma";
 import { extractOpenClawAgents, ignoredOpenClawAgentIds, openClawAgentMap } from "@/lib/server/openclaw-events";
 import { apiErrorResponse } from "@/lib/server/api-error";
+import { RUNNING_STATUSES } from "@/lib/domain";
+import { deriveAgentWorkStatus } from "@/lib/server/agent-state";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +28,7 @@ function settingRecord(value: unknown) {
 
 export async function GET() {
   try {
-    const [agents, latestOpenClawLog, latestSyncLog, workerSetting, openClawJobCount, seedJobCount, manualJobCount, latestJobs, recentLogs] =
+    const [agents, latestOpenClawLog, latestSyncLog, workerSetting, openClawJobCount, seedJobCount, manualJobCount, latestJobs, recentLogs, runningJobs] =
       await Promise.all([
         prisma.agent.findMany({ orderBy: { name: "asc" } }),
         prisma.agentLog.findFirst({
@@ -57,6 +59,14 @@ export async function GET() {
             agent: { select: { id: true, name: true, slug: true } },
             job: { select: { jobId: true, title: true, status: true } }
           }
+        }),
+        prisma.articleJob.findMany({
+          where: {
+            assignedAgentId: { not: null },
+            status: { in: RUNNING_STATUSES as never[] }
+          },
+          orderBy: { updatedAt: "desc" },
+          select: { jobId: true, assignedAgentId: true }
         })
       ]);
 
@@ -83,6 +93,12 @@ export async function GET() {
         discoveredExternalIds.filter((externalId) => !knownExternalIds.has(externalId) && !ignoredExternalIds.has(externalId))
       )
     ];
+    const activeJobByAgentId = new Map<string, (typeof runningJobs)[number]>();
+    for (const job of runningJobs) {
+      if (job.assignedAgentId && !activeJobByAgentId.has(job.assignedAgentId)) {
+        activeJobByAgentId.set(job.assignedAgentId, job);
+      }
+    }
 
     return NextResponse.json({
       gateway: {
@@ -112,7 +128,7 @@ export async function GET() {
           mappedExternalIds: agentMap[agent.slug] ?? [],
           discoveredExternalIds: (agentMap[agent.slug] ?? []).filter((externalId) => discoveredExternalIdSet.has(externalId)),
           openClawEnabled: agent.openClawEnabled,
-          status: agent.status,
+          status: deriveAgentWorkStatus(agent, activeJobByAgentId.get(agent.id) ?? null),
           lastOpenClawSyncAt: agent.lastOpenClawSyncAt?.toISOString() ?? null,
           lastActivityAt: agent.lastActivityAt?.toISOString() ?? null
         }))
