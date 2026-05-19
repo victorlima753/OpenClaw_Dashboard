@@ -173,6 +173,16 @@ function TaskCard({ job, isAdmin }: { job: ArticleJobDto; isAdmin: boolean }) {
           </SelectContent>
         </Select>
       </div>
+      {action.isSuccess ? (
+        <p className="text-xs text-emerald-300" aria-live="polite">
+          Acao registrada. <Link className="underline underline-offset-2" href="/audit">Ver auditoria</Link>
+        </p>
+      ) : null}
+      {action.error ? (
+        <p className="text-xs text-red-300" aria-live="polite">
+          {action.error.message}
+        </p>
+      ) : null}
     </Card>
   );
 }

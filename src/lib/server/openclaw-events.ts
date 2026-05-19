@@ -5,7 +5,7 @@ import { getOpenClawAdapter } from "@/lib/adapters/openclaw";
 import { createAuditLog } from "@/lib/server/audit";
 import { reconcileAgentsForJobChange } from "@/lib/server/agent-state";
 import type { AgentStatus, JobPriority, JobStatus, LogSeverity } from "@/lib/types";
-import type { Agent, Prisma } from "@prisma/client";
+import type { Agent, AuditEventType, Prisma } from "@prisma/client";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -13,6 +13,37 @@ const agentStatuses: AgentStatus[] = ["online", "idle", "busy", "paused", "offli
 const jobStatuses = Object.keys(JOB_STATUS_META) as JobStatus[];
 const priorities: JobPriority[] = ["low", "normal", "high", "urgent"];
 const severities: LogSeverity[] = ["info", "warning", "error", "critical"];
+const openClawWebhookStage = "OpenClaw webhook";
+const auditEventTypes: AuditEventType[] = [
+  "job_created",
+  "relevance_scored",
+  "validation_completed",
+  "article_written",
+  "seo_completed",
+  "affiliate_decided",
+  "compliance_completed",
+  "wordpress_payload_created",
+  "published",
+  "drafted",
+  "failed",
+  "human_review_requested",
+  "prompt_injection_detected",
+  "task_status_changed",
+  "task_retried",
+  "task_cancelled",
+  "task_assigned",
+  "priority_changed",
+  "agent_paused",
+  "agent_resumed",
+  "agent_heartbeat",
+  "review_approved",
+  "review_rejected",
+  "returned_to_writer",
+  "returned_to_validator",
+  "webhook_received",
+  "errors_cleared",
+  "agent_restarted"
+];
 const defaultTechSoulsAgentMap: Record<string, string[]> = {
   "techsouls-orchestrator": ["orchestrator"],
   "techsouls-trend-editorial": ["editorial", "trend-editorial", "trend-editorial-agent", "editorial-agent", "trend-agent"],
@@ -228,6 +259,67 @@ function firstNumber(record: JsonRecord | null | undefined, keys: string[]) {
   return numberValue(firstPayloadValue(record, keys));
 }
 
+function firstBoolean(record: JsonRecord | null | undefined, keys: string[]) {
+  return booleanValue(firstPayloadValue(record, keys));
+}
+
+function scoreRecord(record: JsonRecord | null | undefined) {
+  const scores = firstPayloadValue(record, ["scores"]);
+  return isRecord(scores) ? scores : undefined;
+}
+
+function firstScore(record: JsonRecord | null | undefined, directKeys: string[], scoreKeys: string[]) {
+  const direct = firstNumber(record, directKeys);
+  if (direct !== undefined) return direct;
+  const scores = scoreRecord(record);
+  for (const key of scoreKeys) {
+    const score = numberValue(scores?.[key]);
+    if (score !== undefined) return score;
+  }
+  return undefined;
+}
+
+function firstArray(record: JsonRecord | null | undefined, keys: string[]) {
+  const value = firstPayloadValue(record, keys);
+  return Array.isArray(value) ? value : [];
+}
+
+function sourceRecords(record: JsonRecord | null | undefined) {
+  return firstArray(record, ["sources", "references", "referenceSources", "reference_sources"]).filter(isRecord);
+}
+
+function referenceUrls(record: JsonRecord | null | undefined) {
+  return firstArray(record, ["referenceUrls", "reference_urls", "urls"])
+    .map((value) => stringValue(value))
+    .filter((value): value is string => Boolean(value));
+}
+
+function stageLabel(value?: string | null, fallback?: JobStatus) {
+  const normalized = normalizeStatus(value, jobStatuses);
+  if (normalized) return JOB_STATUS_META[normalized].stage;
+  if (value) return value;
+  return fallback ? JOB_STATUS_META[fallback].stage : "OpenClaw";
+}
+
+function auditEventFromOpenClawEvent(event: string, status?: JobStatus, jobCreated = false): AuditEventType {
+  if (jobCreated) return "job_created";
+  if (status === "published") return "published";
+  if (status === "drafted") return "drafted";
+  if (status === "failed") return "failed";
+  if (status === "human_review") return "human_review_requested";
+  const normalized = event.toLowerCase().replaceAll("-", "_").replaceAll(".", "_") as AuditEventType;
+  return auditEventTypes.includes(normalized) ? normalized : "webhook_received";
+}
+
+function dedupeKey(input: {
+  jobId?: string;
+  agentKey?: string | null;
+  event: string;
+  idempotencyKey?: string;
+}) {
+  return input.idempotencyKey ?? `${input.jobId ?? "unknown"}:${input.agentKey ?? "unknown"}:${input.event}`;
+}
+
 function statusFromEvent(event: string) {
   const normalized = event.toLowerCase().replaceAll("-", "_").replaceAll(".", "_");
   if ((jobStatuses as string[]).includes(normalized)) return normalized as JobStatus;
@@ -270,7 +362,7 @@ async function findDashboardAgent(externalKey?: string | null) {
   const keys = candidateAgentKeys(externalKey);
   return prisma.agent.findFirst({
     where: {
-      OR: keys.flatMap((key) => [{ slug: key }, { name: key }])
+      OR: keys.flatMap((key) => [{ slug: key }, { name: key }, { externalId: key }])
     }
   });
 }
@@ -626,9 +718,24 @@ export async function applyOpenClawTaskUpdate(input: {
   event: string;
   status?: string;
   agentSlug?: string;
+  agentExternalId?: string;
+  completedStage?: string;
+  idempotencyKey?: string;
+  severity?: string;
+  timestamp?: string;
   payload?: unknown;
 }) {
-  const payloadRecord = findJobPayload(input.payload);
+  const foundPayloadRecord = findJobPayload(input.payload);
+  const payloadRecord: JsonRecord = {
+    ...(isRecord(input.payload) ? input.payload : {}),
+    ...(foundPayloadRecord ?? {})
+  };
+  if (input.jobId) payloadRecord.jobId = input.jobId;
+  if (input.status) payloadRecord.status = input.status;
+  if (input.agentSlug) payloadRecord.agentSlug = input.agentSlug;
+  if (input.agentExternalId) payloadRecord.agentExternalId = input.agentExternalId;
+  if (input.completedStage) payloadRecord.completedStage = input.completedStage;
+  if (input.severity) payloadRecord.severity = input.severity;
   const jobId =
     input.jobId ??
     stringValue(payloadRecord?.jobId) ??
@@ -637,11 +744,47 @@ export async function applyOpenClawTaskUpdate(input: {
   const status =
     normalizeStatus(input.status ?? payloadRecord?.status ?? payloadRecord?.stage, jobStatuses) ??
     statusFromEvent(input.event);
-  const severity = normalizeStatus(payloadRecord?.severity, severities) ?? (status === "failed" ? "error" : "info");
+  const severity =
+    normalizeStatus(input.severity ?? payloadRecord?.severity, severities) ?? (status === "failed" ? "error" : "info");
   const agentKey =
     input.agentSlug ??
-    firstString(payloadRecord, ["agentSlug", "agent_slug", "agentId", "agent_id", "assignedAgent", "currentAgent"]);
+    input.agentExternalId ??
+    firstString(payloadRecord, [
+      "agentSlug",
+      "agent_slug",
+      "agentExternalId",
+      "agent_external_id",
+      "agentId",
+      "agent_id",
+      "assignedAgent",
+      "currentAgent"
+    ]);
   const agent = await findDashboardAgent(agentKey);
+  const webhookDedupeKey = dedupeKey({ jobId, agentKey, event: input.event, idempotencyKey: input.idempotencyKey });
+
+  if (jobId) {
+    const duplicate = await prisma.agentLog.findFirst({
+      where: {
+        jobId,
+        stage: openClawWebhookStage,
+        decision: webhookDedupeKey,
+        ...(agent ? { agentId: agent.id } : {})
+      },
+      select: { id: true, createdAt: true }
+    });
+
+    if (duplicate) {
+      return {
+        accepted: true,
+        duplicate: true,
+        updatedJob: false,
+        createdJob: false,
+        jobId,
+        status,
+        idempotencyKey: webhookDedupeKey
+      };
+    }
+  }
 
   let jobUpdated = false;
   let jobCreated = false;
@@ -656,12 +799,22 @@ export async function applyOpenClawTaskUpdate(input: {
     const sourceName = firstString(payloadRecord, ["sourceName", "source_name", "source", "publisher"]) ?? "OpenClaw Gateway";
     const sourceUrl = firstString(payloadRecord, ["sourceUrl", "source_url", "url", "link"]) ?? "https://openclaw.local/events";
     const explicitStage = firstString(payloadRecord, ["currentStage", "current_stage", "stage"]);
-    const currentStage = explicitStage ?? JOB_STATUS_META[effectiveStatus].stage;
+    const completedStage = firstString(payloadRecord, ["completedStage", "completed_stage"]) ?? input.completedStage;
+    const currentStage = status ? JOB_STATUS_META[status].stage : explicitStage ?? stageLabel(completedStage, effectiveStatus);
     const priority = normalizeStatus(firstPayloadValue(payloadRecord, ["priority"]), priorities);
     const articleMarkdown = firstString(payloadRecord, ["articleMarkdown", "article_markdown", "article", "content", "body"]);
     const openClawExternalId = externalJobId(payloadRecord, jobId);
+    const relevanceScore = firstScore(payloadRecord, ["relevanceScore", "relevance_score"], ["relevance"]);
+    const validationScore = firstScore(payloadRecord, ["validationScore", "validation_score"], ["validation"]);
+    const editorialScore = firstScore(payloadRecord, ["editorialScore", "editorial_score"], ["editorial"]);
+    const seoScore = firstScore(payloadRecord, ["seoScore", "seo_score"], ["seo"]);
+    const complianceScore = firstScore(payloadRecord, ["complianceScore", "compliance_score"], ["compliance"]);
+    const monetizationScore = firstScore(payloadRecord, ["monetizationScore", "monetization_score"], ["monetization"]);
+    const requiresHumanReview =
+      effectiveStatus === "human_review" ||
+      firstBoolean(payloadRecord, ["requiresHumanReview", "requires_human_review"]) === true;
 
-    await prisma.articleJob.upsert({
+    const job = await prisma.articleJob.upsert({
       where: { jobId },
       create: {
         jobId,
@@ -677,16 +830,14 @@ export async function applyOpenClawTaskUpdate(input: {
         status: effectiveStatus,
         priority: priority ?? "normal",
         assignedAgentId: agent?.id ?? null,
-        relevanceScore: firstNumber(payloadRecord, ["relevanceScore", "relevance_score"]),
-        validationScore: firstNumber(payloadRecord, ["validationScore", "validation_score"]),
-        editorialScore: firstNumber(payloadRecord, ["editorialScore", "editorial_score"]),
-        seoScore: firstNumber(payloadRecord, ["seoScore", "seo_score"]),
-        complianceScore: firstNumber(payloadRecord, ["complianceScore", "compliance_score"]),
-        monetizationScore: firstNumber(payloadRecord, ["monetizationScore", "monetization_score"]),
-        hasAffiliate: booleanValue(firstPayloadValue(payloadRecord, ["hasAffiliate", "has_affiliate"])) ?? false,
-        requiresHumanReview:
-          effectiveStatus === "human_review" ||
-          booleanValue(firstPayloadValue(payloadRecord, ["requiresHumanReview", "requires_human_review"])) === true,
+        relevanceScore,
+        validationScore,
+        editorialScore,
+        seoScore,
+        complianceScore,
+        monetizationScore,
+        hasAffiliate: firstBoolean(payloadRecord, ["hasAffiliate", "has_affiliate"]) ?? false,
+        requiresHumanReview,
         wordpressPostId: firstString(payloadRecord, ["wordpressPostId", "wordpress_post_id", "postId"]),
         wordpressPreviewUrl: firstString(payloadRecord, ["wordpressPreviewUrl", "wordpress_preview_url", "previewUrl"]),
         errorMessage:
@@ -699,20 +850,19 @@ export async function applyOpenClawTaskUpdate(input: {
         externalId: openClawExternalId ?? undefined,
         dataSource: "openclaw",
         status: status ?? undefined,
-        currentStage: status ? JOB_STATUS_META[status].stage : explicitStage ?? undefined,
+        currentStage: status ? JOB_STATUS_META[status].stage : explicitStage ?? (completedStage ? stageLabel(completedStage) : undefined),
         assignedAgentId: agent?.id ?? undefined,
-        relevanceScore: firstNumber(payloadRecord, ["relevanceScore", "relevance_score"]) ?? undefined,
-        validationScore: firstNumber(payloadRecord, ["validationScore", "validation_score"]) ?? undefined,
-        editorialScore: firstNumber(payloadRecord, ["editorialScore", "editorial_score"]) ?? undefined,
-        seoScore: firstNumber(payloadRecord, ["seoScore", "seo_score"]) ?? undefined,
-        complianceScore: firstNumber(payloadRecord, ["complianceScore", "compliance_score"]) ?? undefined,
-        monetizationScore: firstNumber(payloadRecord, ["monetizationScore", "monetization_score"]) ?? undefined,
-        hasAffiliate: booleanValue(firstPayloadValue(payloadRecord, ["hasAffiliate", "has_affiliate"])) ?? undefined,
+        relevanceScore: relevanceScore ?? undefined,
+        validationScore: validationScore ?? undefined,
+        editorialScore: editorialScore ?? undefined,
+        seoScore: seoScore ?? undefined,
+        complianceScore: complianceScore ?? undefined,
+        monetizationScore: monetizationScore ?? undefined,
+        hasAffiliate: firstBoolean(payloadRecord, ["hasAffiliate", "has_affiliate"]) ?? undefined,
         requiresHumanReview:
           status === "human_review"
             ? true
-            : booleanValue(firstPayloadValue(payloadRecord, ["requiresHumanReview", "requires_human_review"])) ??
-              undefined,
+            : firstBoolean(payloadRecord, ["requiresHumanReview", "requires_human_review"]) ?? undefined,
         wordpressPostId: firstString(payloadRecord, ["wordpressPostId", "wordpress_post_id", "postId"]) ?? undefined,
         wordpressPreviewUrl:
           firstString(payloadRecord, ["wordpressPreviewUrl", "wordpress_preview_url", "previewUrl"]) ?? undefined,
@@ -725,10 +875,15 @@ export async function applyOpenClawTaskUpdate(input: {
       }
     });
 
-    const snapshotStage = status ? JOB_STATUS_META[status].stage : currentStage;
+    const snapshotStage = stageLabel(completedStage, status ?? effectiveStatus);
+    const inputPayload =
+      firstPayloadValue(payloadRecord, ["inputPayload", "input_payload", "promptPayload", "prompt_payload"]) ??
+      input.payload ??
+      payloadRecord;
     const outputPayload =
-      firstPayloadValue(payloadRecord, ["outputPayload", "output_payload", "output", "result", "response"]) ?? {};
-    const inputHash = jsonHash(input.payload ?? payloadRecord);
+      firstPayloadValue(payloadRecord, ["outputPayload", "output_payload", "output", "result", "response"]) ??
+      payloadRecord;
+    const inputHash = jsonHash(inputPayload);
     const outputHash = jsonHash(outputPayload);
     const existingSnapshot = await prisma.payloadSnapshot.findFirst({
       where: { jobId, stage: snapshotStage, inputHash, outputHash }
@@ -739,7 +894,7 @@ export async function applyOpenClawTaskUpdate(input: {
           jobId,
           stage: snapshotStage,
           agentId: agent?.id ?? null,
-          inputPayload: asJson(input.payload ?? payloadRecord),
+          inputPayload: asJson(inputPayload),
           outputPayload: asJson(outputPayload),
           inputHash,
           outputHash
@@ -747,20 +902,88 @@ export async function applyOpenClawTaskUpdate(input: {
       });
     }
 
+    const sourceInputs = [
+      ...sourceRecords(payloadRecord).map((source) => ({
+        name: stringValue(source.name) ?? stringValue(source.sourceName) ?? "Fonte OpenClaw",
+        url: stringValue(source.url) ?? stringValue(source.sourceUrl) ?? "",
+        role: stringValue(source.role) ?? "reference",
+        reliabilityScore: numberValue(source.reliabilityScore) ?? numberValue(source.reliability_score) ?? 80,
+        publishedAt: dateValue(source.publishedAt)
+      })),
+      ...referenceUrls(payloadRecord).map((url, index) => ({
+        name: `Referencia ${index + 1}`,
+        url,
+        role: "reference",
+        reliabilityScore: 80,
+        publishedAt: undefined
+      }))
+    ].filter((source) => source.url);
+
     const sourceUrlValue = firstString(payloadRecord, ["sourceUrl", "source_url", "url", "link"]);
-    if (sourceUrlValue) {
-      const existingSource = await prisma.source.findFirst({ where: { jobId, url: sourceUrlValue } });
+    if (sourceUrlValue && !sourceInputs.some((source) => source.url === sourceUrlValue)) {
+      sourceInputs.unshift({
+        name: sourceName,
+        url: sourceUrlValue,
+        role: "primary",
+        reliabilityScore: firstNumber(payloadRecord, ["reliabilityScore", "reliability_score"]) ?? 80,
+        publishedAt: undefined
+      });
+    }
+
+    for (const source of sourceInputs) {
+      const existingSource = await prisma.source.findFirst({ where: { jobId, url: source.url } });
       if (!existingSource) {
         await prisma.source.create({
           data: {
             jobId,
-            name: sourceName,
-            url: sourceUrlValue,
-            role: "primary",
-            reliabilityScore: firstNumber(payloadRecord, ["reliabilityScore", "reliability_score"]) ?? 80
+            name: source.name,
+            url: source.url,
+            role: source.role,
+            reliabilityScore: source.reliabilityScore,
+            publishedAt: source.publishedAt
           }
         });
       }
+    }
+
+    const pendingReview = await prisma.humanReview.findFirst({ where: { jobId, status: "pending" } });
+    if (requiresHumanReview || status === "human_review") {
+      const reason =
+        firstString(payloadRecord, ["humanReviewReason", "human_review_reason", "reviewReason", "review_reason"]) ??
+        "Revisao humana solicitada pelo OpenClaw.";
+      if (pendingReview) {
+        await prisma.humanReview.update({
+          where: { id: pendingReview.id },
+          data: {
+            reason,
+            decision: null,
+            reviewerComment: null
+          }
+        });
+      } else {
+        await prisma.humanReview.create({
+          data: {
+            jobId,
+            status: "pending",
+            reason
+          }
+        });
+      }
+    } else if (pendingReview && ["published", "publishing"].includes(effectiveStatus)) {
+      await prisma.humanReview.update({
+        where: { id: pendingReview.id },
+        data: { status: "approved", decision: "approved", reviewerComment: "Aprovado pelo fluxo OpenClaw." }
+      });
+    } else if (pendingReview && effectiveStatus === "drafted") {
+      await prisma.humanReview.update({
+        where: { id: pendingReview.id },
+        data: { status: "approved", decision: "drafted", reviewerComment: "Salvo como rascunho pelo fluxo OpenClaw." }
+      });
+    } else if (pendingReview && ["discarded", "failed"].includes(effectiveStatus)) {
+      await prisma.humanReview.update({
+        where: { id: pendingReview.id },
+        data: { status: "rejected", decision: effectiveStatus, reviewerComment: "Encerrado pelo fluxo OpenClaw." }
+      });
     }
 
     jobUpdated = true;
@@ -773,22 +996,67 @@ export async function applyOpenClawTaskUpdate(input: {
         }
       });
     }
-    await reconcileAgentsForJobChange(existing?.assignedAgentId, agent?.id);
+    await reconcileAgentsForJobChange(existing?.assignedAgentId, job.assignedAgentId);
   }
+
+  await prisma.systemSetting.upsert({
+    where: { key: "openclaw_latest_webhook" },
+    create: {
+      key: "openclaw_latest_webhook",
+      value: {
+        event: input.event,
+        jobId: jobId ?? null,
+        agentKey: agentKey ?? null,
+        status: status ?? null,
+        completedStage: input.completedStage ?? null,
+        idempotencyKey: webhookDedupeKey,
+        receivedAt: new Date().toISOString()
+      }
+    },
+    update: {
+      value: {
+        event: input.event,
+        jobId: jobId ?? null,
+        agentKey: agentKey ?? null,
+        status: status ?? null,
+        completedStage: input.completedStage ?? null,
+        idempotencyKey: webhookDedupeKey,
+        receivedAt: new Date().toISOString()
+      }
+    }
+  });
 
   await createAuditLog({
     jobId,
     agentId: agent?.id,
-    eventType: jobCreated ? "job_created" : status === "failed" ? "failed" : "webhook_received",
+    eventType: auditEventFromOpenClawEvent(input.event, status, jobCreated && statusFromEvent(input.event) === "new"),
     severity,
-    stage: status ? JOB_STATUS_META[status].stage : input.event,
-    decision: status,
-    score: numberValue(payloadRecord?.score),
+    stage: openClawWebhookStage,
+    decision: webhookDedupeKey,
+    score:
+      numberValue(payloadRecord?.score) ??
+      firstScore(payloadRecord, ["relevanceScore", "relevance_score"], ["relevance"]),
     message: `Update OpenClaw recebido: ${input.event}.`,
-    inputPayload: input
+    inputPayload: {
+      event: input.event,
+      jobId: jobId ?? null,
+      agentKey: agentKey ?? null,
+      status: status ?? null,
+      completedStage: input.completedStage ?? null,
+      timestamp: input.timestamp ?? null,
+      payload: input.payload ?? null
+    },
+    outputPayload: {
+      updatedJob: jobUpdated,
+      createdJob: jobCreated,
+      dataSource: jobId ? "openclaw" : null,
+      status: status ?? null,
+      completedStage: input.completedStage ?? null
+    },
+    errorPayload: asJson(firstPayloadValue(payloadRecord, ["errors", "errorPayload", "error_payload"]) ?? null)
   });
 
-  return { accepted: true, updatedJob: jobUpdated, createdJob: jobCreated, jobId, status };
+  return { accepted: true, duplicate: false, updatedJob: jobUpdated, createdJob: jobCreated, jobId, status, idempotencyKey: webhookDedupeKey };
 }
 
 export async function handleOpenClawGatewayMessage(message: unknown) {

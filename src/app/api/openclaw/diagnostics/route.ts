@@ -28,7 +28,21 @@ function settingRecord(value: unknown) {
 
 export async function GET() {
   try {
-    const [agents, latestOpenClawLog, latestSyncLog, workerSetting, openClawJobCount, seedJobCount, manualJobCount, latestJobs, recentLogs, runningJobs] =
+    const [
+      agents,
+      latestOpenClawLog,
+      latestSyncLog,
+      latestWebhookLog,
+      webhookCount,
+      workerSetting,
+      latestWebhookSetting,
+      openClawJobCount,
+      seedJobCount,
+      manualJobCount,
+      latestJobs,
+      recentLogs,
+      runningJobs
+    ] =
       await Promise.all([
         prisma.agent.findMany({ orderBy: { name: "asc" } }),
         prisma.agentLog.findFirst({
@@ -41,7 +55,17 @@ export async function GET() {
           orderBy: { createdAt: "desc" },
           select: { inputPayload: true, outputPayload: true, createdAt: true }
         }),
+        prisma.agentLog.findFirst({
+          where: { stage: "OpenClaw webhook" },
+          orderBy: { createdAt: "desc" },
+          include: {
+            agent: { select: { id: true, name: true, slug: true } },
+            job: { select: { jobId: true, title: true, status: true } }
+          }
+        }),
+        prisma.agentLog.count({ where: { stage: "OpenClaw webhook" } }),
         prisma.systemSetting.findUnique({ where: { key: "openclaw_worker_status" } }),
+        prisma.systemSetting.findUnique({ where: { key: "openclaw_latest_webhook" } }),
         prisma.articleJob.count({ where: { dataSource: "openclaw" } }),
         prisma.articleJob.count({ where: { dataSource: "seed" } }),
         prisma.articleJob.count({ where: { dataSource: "manual" } }),
@@ -74,6 +98,7 @@ export async function GET() {
     const gatewayConnected =
       isRealOpenClawEnabled() && latestOpenClawAt > 0 && Date.now() - latestOpenClawAt < 10 * 60_000;
     const workerValue = settingRecord(workerSetting?.value);
+    const latestWebhookValue = settingRecord(latestWebhookSetting?.value);
     const workerLastSeenAt = stringValue(workerValue.lastSeenAt);
     const workerLastSeenMs = workerLastSeenAt ? new Date(workerLastSeenAt).getTime() : 0;
     const workerConnected = workerLastSeenMs > 0 && Date.now() - workerLastSeenMs < 2 * 60_000;
@@ -116,6 +141,22 @@ export async function GET() {
         connected: workerConnected,
         lastSeenAt: workerLastSeenAt ?? null,
         lastMessage: stringValue(workerValue.message) ?? null
+      },
+      webhook: {
+        configured: Boolean(process.env.OPENCLAW_WEBHOOK_SECRET),
+        receivedCount: webhookCount,
+        latestReceivedAt:
+          stringValue(latestWebhookValue.receivedAt) ?? latestWebhookLog?.createdAt.toISOString() ?? null,
+        latestEvent: stringValue(latestWebhookValue.event) ?? null,
+        latestJobId: stringValue(latestWebhookValue.jobId) ?? latestWebhookLog?.jobId ?? null,
+        latestAgentKey: stringValue(latestWebhookValue.agentKey) ?? null,
+        latestLog: latestWebhookLog,
+        curlExample: [
+          "curl -X POST \"$PUBLIC_APP_URL/api/webhooks/openclaw/task-update\" \\",
+          "  -H \"Authorization: Bearer [OPENCLAW_WEBHOOK_SECRET]\" \\",
+          "  -H \"Content-Type: application/json\" \\",
+          "  -d '{\"event\":\"article_written\",\"jobId\":\"ts-openclaw-demo-0001\",\"agentExternalId\":\"writer\",\"status\":\"seo_optimizing\",\"completedStage\":\"writing\",\"idempotencyKey\":\"writer:ts-openclaw-demo-0001:article_written:1\",\"payload\":{\"title\":\"Demo\",\"topic\":\"OpenClaw\",\"category\":\"IA\",\"sourceName\":\"TechSouls\",\"sourceUrl\":\"https://techsouls.com.br/\",\"articleMarkdown\":\"Conteudo demo\"}}'"
+        ].join("\n")
       },
       agents: {
         mapped: agents.filter((agent) => agent.externalId).length,

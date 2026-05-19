@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bot, CheckCircle2, PlayCircle, RadioTower, RefreshCw, Send, Server, Unplug } from "lucide-react";
+import { Bot, CheckCircle2, PlayCircle, RadioTower, RefreshCw, Send, Server, Terminal, Unplug, Webhook } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,7 +63,7 @@ export function OpenClawPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid gap-4 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardContent className="flex items-center justify-between p-4">
             <div>
@@ -95,6 +95,18 @@ export function OpenClawPage() {
         <Card>
           <CardContent className="flex items-center justify-between p-4">
             <div>
+              <p className="text-xs text-muted-foreground">Webhook real</p>
+              <p className="mt-1 text-sm font-medium">{data.webhook.configured ? "Secret configurado" : "Secret ausente"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {data.webhook.latestReceivedAt ? formatRelativeTime(data.webhook.latestReceivedAt) : "Sem eventos"}
+              </p>
+            </div>
+            <Webhook className={data.webhook.configured ? "size-5 text-emerald-300" : "size-5 text-amber-300"} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center justify-between p-4">
+            <div>
               <p className="text-xs text-muted-foreground">Agentes mapeados</p>
               <p className="mt-1 text-2xl font-semibold">{data.agents.mapped}</p>
               <p className="mt-1 text-xs text-muted-foreground">{data.agents.unmappedExternalIds.length} externos sem mapa</p>
@@ -113,6 +125,56 @@ export function OpenClawPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className={data.webhook.configured ? "border-emerald-500/20" : "border-amber-500/25"}>
+        <CardHeader>
+          <CardTitle>Webhook estruturado dos agentes</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">Eventos recebidos</p>
+                <p className="mt-1 text-2xl font-semibold">{compactNumber(data.webhook.receivedCount)}</p>
+              </div>
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">Ultimo evento</p>
+                <p className="mt-1 truncate text-sm font-medium">{data.webhook.latestEvent ?? "-"}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">{data.webhook.latestJobId ?? "Sem job"}</p>
+              </div>
+            </div>
+            {!data.webhook.configured ? (
+              <p className="rounded-md border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-200">
+                Configure `OPENCLAW_WEBHOOK_SECRET` no EasyPanel antes de orientar os agentes a chamarem o webhook.
+              </p>
+            ) : (
+              <p className="rounded-md border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                Endpoint pronto para receber eventos `TechSoulsJobUpdate v1` dos agentes OpenClaw.
+              </p>
+            )}
+            {data.webhook.latestLog ? (
+              <div className="rounded-md border p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <SeverityBadge severity={data.webhook.latestLog.severity} />
+                  <span className="text-xs text-muted-foreground">
+                    {formatRelativeTime(data.webhook.latestLog.createdAt)}
+                  </span>
+                </div>
+                <p className="text-sm">{data.webhook.latestLog.message}</p>
+              </div>
+            ) : null}
+          </div>
+          <div className="min-w-0 rounded-md border bg-muted/20 p-3">
+            <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <Terminal className="size-4" />
+              Snippet de teste redigido
+            </div>
+            <pre className="overflow-x-auto whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+              {data.webhook.curlExample}
+            </pre>
+          </div>
+        </CardContent>
+      </Card>
 
       {syncMutation.data?.sync ? (
         <Card className="border-sky-500/25">

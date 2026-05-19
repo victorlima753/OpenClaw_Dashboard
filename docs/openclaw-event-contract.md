@@ -37,6 +37,8 @@ The dashboard ships with the default TechSouls map for the editorial agent fleet
 
 ## Job Update Webhook
 
+`POST /api/webhooks/openclaw/task-update` is now the canonical `TechSoulsJobUpdate v1` ingestion path for real editorial jobs. Agents must send one structured event per completed stage. The dashboard requires `jobId`, uses `status` as the current/next Kanban status, uses `completedStage` for audit/snapshot context, and deduplicates retries with `idempotencyKey`.
+
 Endpoint:
 
 ```http
@@ -49,30 +51,38 @@ Payload:
 
 ```json
 {
-  "event": "validation_completed",
-  "jobId": "ts-2026-05-17-0001",
-  "agentSlug": "validator",
-  "status": "validating",
+  "event": "article_written",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "writer",
+  "status": "seo_optimizing",
+  "completedStage": "writing",
+  "idempotencyKey": "writer:ts-openclaw-2026-05-18-0001:article_written:1",
+  "timestamp": "2026-05-18T12:00:00.000Z",
+  "severity": "info",
   "payload": {
-    "jobId": "ts-2026-05-17-0001",
-    "externalId": "openclaw-run-001",
-    "title": "Samsung anuncia novo recurso de IA para celulares Galaxy",
-    "topic": "IA em smartphones",
-    "category": "Celulares",
-    "sourceName": "Samsung Newsroom",
-    "sourceUrl": "https://example.com/samsung-ai",
-    "currentStage": "Validator",
-    "status": "validating",
-    "priority": "high",
-    "relevanceScore": 91,
-    "validationScore": 88,
-    "complianceScore": null,
-    "hasAffiliate": true,
-    "requiresHumanReview": false,
-    "outputPayload": {
-      "decision": "valid_source",
-      "warnings": []
-    }
+    "title": "Titulo da pauta",
+    "topic": "Topico",
+    "category": "IA",
+    "sourceName": "Fonte principal",
+    "sourceUrl": "https://example.com",
+    "articleMarkdown": "...",
+    "scores": {
+      "relevance": 91,
+      "validation": 88,
+      "seo": 82,
+      "compliance": 94
+    },
+    "sources": [
+      {
+        "name": "Fonte",
+        "url": "https://example.com",
+        "role": "primary",
+        "reliabilityScore": 85
+      }
+    ],
+    "inputPayload": {},
+    "outputPayload": {},
+    "errors": []
   }
 }
 ```
@@ -82,8 +92,11 @@ Behavior:
 - Creates the `ArticleJob` if it does not exist.
 - Marks `dataSource=openclaw`.
 - Updates status, stage, scores, affiliate flags, WordPress fields and article content when present.
-- Creates payload snapshots and audit logs.
+- Creates sources, payload snapshots, human review rows and audit logs.
 - Updates the mapped agent as busy/online depending on job state.
+- Repeated payloads with the same `jobId`, agent, event and `idempotencyKey` are accepted as duplicates and do not mutate job state again.
+
+Agent configuration snippets live in `docs/openclaw-agent-webhook-instructions.md`.
 
 ## Agent Event Webhook
 

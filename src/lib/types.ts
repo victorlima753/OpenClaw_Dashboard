@@ -183,6 +183,16 @@ export type OpenClawOverview = {
     lastSeenAt: string | null;
     lastMessage: string | null;
   };
+  webhook: {
+    configured: boolean;
+    receivedCount: number;
+    latestReceivedAt: string | null;
+    latestEvent: string | null;
+    latestJobId: string | null;
+    latestAgentKey: string | null;
+    latestLog: AgentLogDto | null;
+    curlExample: string;
+  };
   agents: {
     mapped: number;
     unmappedExternalIds: string[];

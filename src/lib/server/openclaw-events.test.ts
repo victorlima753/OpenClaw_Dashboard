@@ -1,5 +1,48 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const prismaMock = vi.hoisted(() => ({
+  agent: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    create: vi.fn()
+  },
+  articleJob: {
+    findUnique: vi.fn(),
+    upsert: vi.fn()
+  },
+  payloadSnapshot: {
+    findFirst: vi.fn(),
+    create: vi.fn()
+  },
+  source: {
+    findFirst: vi.fn(),
+    create: vi.fn()
+  },
+  humanReview: {
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn()
+  },
+  systemSetting: {
+    upsert: vi.fn()
+  },
+  agentLog: {
+    findFirst: vi.fn(),
+    create: vi.fn()
+  }
+}));
+
+const reconcileAgentsForJobChangeMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("@/lib/server/agent-state", () => ({
+  reconcileAgentsForJobChange: reconcileAgentsForJobChangeMock
+}));
+
 import {
+  applyOpenClawTaskUpdate,
   bestOpenClawAgentForDashboardAgent,
   extractOpenClawAgentActivities,
   extractOpenClawAgents,
@@ -7,6 +50,10 @@ import {
 } from "./openclaw-events";
 
 describe("extractOpenClawAgents", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("ships the TechSouls agent map with editorial aliases by default", () => {
     vi.stubEnv("OPENCLAW_AGENT_MAP_JSON", "");
 
@@ -153,5 +200,95 @@ describe("extractOpenClawAgents", () => {
     ).toEqual(expect.objectContaining({ externalId: "editor-final" }));
 
     vi.unstubAllEnvs();
+  });
+
+  it("creates an OpenClaw job update with sources, snapshots and human review", async () => {
+    const writer = {
+      id: "agent-writer",
+      name: "Writer",
+      slug: "techsouls-blog-writer",
+      externalId: "writer"
+    };
+    prismaMock.agent.findFirst.mockResolvedValue(writer);
+    prismaMock.agentLog.findFirst.mockResolvedValue(null);
+    prismaMock.articleJob.findUnique.mockResolvedValue(null);
+    prismaMock.articleJob.upsert.mockResolvedValue({
+      jobId: "ts-openclaw-2026-05-18-0001",
+      assignedAgentId: writer.id
+    });
+    prismaMock.payloadSnapshot.findFirst.mockResolvedValue(null);
+    prismaMock.source.findFirst.mockResolvedValue(null);
+    prismaMock.humanReview.findFirst.mockResolvedValue(null);
+    prismaMock.agent.update.mockResolvedValue(writer);
+    prismaMock.payloadSnapshot.create.mockResolvedValue({});
+    prismaMock.source.create.mockResolvedValue({});
+    prismaMock.humanReview.create.mockResolvedValue({});
+    prismaMock.systemSetting.upsert.mockResolvedValue({});
+    prismaMock.agentLog.create.mockResolvedValue({});
+
+    const result = await applyOpenClawTaskUpdate({
+      event: "article_written",
+      jobId: "ts-openclaw-2026-05-18-0001",
+      agentExternalId: "writer",
+      status: "human_review",
+      completedStage: "writing",
+      idempotencyKey: "writer:ts-openclaw-2026-05-18-0001:article_written:1",
+      payload: {
+        title: "Titulo real",
+        topic: "OpenClaw",
+        category: "IA",
+        sourceName: "TechSouls",
+        sourceUrl: "https://techsouls.com.br/",
+        scores: { relevance: 91, validation: 88, compliance: 72 },
+        articleMarkdown: "# Artigo",
+        sources: [{ name: "Fonte A", url: "https://example.com/a", reliabilityScore: 85 }],
+        outputPayload: { articleMarkdown: "# Artigo" }
+      }
+    });
+
+    expect(result).toEqual(expect.objectContaining({ accepted: true, createdJob: true, duplicate: false }));
+    expect(prismaMock.articleJob.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          dataSource: "openclaw",
+          status: "human_review",
+          assignedAgentId: writer.id,
+          relevanceScore: 91,
+          validationScore: 88,
+          complianceScore: 72,
+          requiresHumanReview: true
+        })
+      })
+    );
+    expect(prismaMock.payloadSnapshot.create).toHaveBeenCalled();
+    expect(prismaMock.source.create).toHaveBeenCalled();
+    expect(prismaMock.humanReview.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "pending" }) })
+    );
+    expect(prismaMock.agentLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          stage: "OpenClaw webhook",
+          decision: "writer:ts-openclaw-2026-05-18-0001:article_written:1"
+        })
+      })
+    );
+  });
+
+  it("deduplicates OpenClaw job updates by idempotency key", async () => {
+    prismaMock.agent.findFirst.mockResolvedValue({ id: "agent-writer", name: "Writer", slug: "techsouls-blog-writer" });
+    prismaMock.agentLog.findFirst.mockResolvedValue({ id: "log-1", createdAt: new Date() });
+
+    const result = await applyOpenClawTaskUpdate({
+      event: "article_written",
+      jobId: "ts-openclaw-2026-05-18-0001",
+      agentExternalId: "writer",
+      status: "seo_optimizing",
+      idempotencyKey: "duplicate-key",
+      payload: { title: "Titulo real" }
+    });
+
+    expect(result).toEqual(expect.objectContaining({ accepted: true, duplicate: true, updatedJob: false }));
+    expect(prismaMock.articleJob.upsert).not.toHaveBeenCalled();
   });
 });

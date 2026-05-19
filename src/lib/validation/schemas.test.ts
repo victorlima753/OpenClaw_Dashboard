@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { auditCreateSchema, createTaskSchema, updateStatusSchema } from "./schemas";
+import { auditCreateSchema, createTaskSchema, techSoulsJobUpdateSchema, updateStatusSchema } from "./schemas";
 
 describe("api validation schemas", () => {
   it("accepts valid task creation payloads", () => {
@@ -30,5 +30,38 @@ describe("api validation schemas", () => {
     });
 
     expect(parsed.severity).toBe("info");
+  });
+
+  it("validates the TechSouls OpenClaw job update contract", () => {
+    const parsed = techSoulsJobUpdateSchema.parse({
+      event: "article_written",
+      jobId: "ts-openclaw-2026-05-18-0001",
+      agentExternalId: "writer",
+      status: "seo_optimizing",
+      completedStage: "writing",
+      idempotencyKey: "writer:ts-openclaw-2026-05-18-0001:article_written:1",
+      payload: {
+        title: "Titulo da pauta",
+        sourceName: "TechSouls",
+        sourceUrl: "https://techsouls.com.br/",
+        scores: { relevance: 91, validation: 88 },
+        sources: [{ name: "Fonte", url: "https://example.com", reliabilityScore: 85 }]
+      }
+    });
+
+    expect(parsed.jobId).toBe("ts-openclaw-2026-05-18-0001");
+    expect(parsed.severity).toBe("info");
+    expect(parsed.payload.sources?.[0].role).toBe("reference");
+  });
+
+  it("rejects OpenClaw job updates without jobId", () => {
+    expect(() =>
+      techSoulsJobUpdateSchema.parse({
+        event: "article_written",
+        agentExternalId: "writer",
+        status: "seo_optimizing",
+        payload: {}
+      })
+    ).toThrow();
   });
 });
