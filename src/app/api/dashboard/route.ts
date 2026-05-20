@@ -13,7 +13,7 @@ export async function GET() {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [agents, jobs, recentLogs, criticalAlerts, latestOpenClawLog] = await Promise.all([
+    const [agents, jobs, recentLogs, criticalAlerts, systemAlerts, latestOpenClawLog] = await Promise.all([
       prisma.agent.findMany(),
       prisma.articleJob.findMany({ include: { assignedAgent: true } }),
       prisma.agentLog.findMany({
@@ -32,6 +32,11 @@ export async function GET() {
           agent: { select: { id: true, name: true, slug: true } },
           job: { select: { jobId: true, title: true, status: true } }
         }
+      }),
+      prisma.systemAlert.findMany({
+        where: { status: "active" },
+        orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
+        take: 8
       }),
       prisma.agentLog.findFirst({
         where: { message: { contains: "OpenClaw", mode: "insensitive" } },
@@ -100,6 +105,7 @@ export async function GET() {
       tasksByAgent,
       recentLogs,
       criticalAlerts,
+      systemAlerts,
       openClaw: {
         realEnabled: isRealOpenClawEnabled(),
         connected: openClawConnected,

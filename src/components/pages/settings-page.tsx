@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ExternalLink, RefreshCw, Save, Trash2 } from "lucide-react";
+import { ExternalLink, RefreshCw, Save, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,17 @@ type SyncResult = {
 };
 type ClearDemoResult = {
   counts?: Record<string, number>;
+};
+type SessionInfo = {
+  user?: { role: "admin" | "editor" | "viewer" };
+};
+type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "editor" | "viewer";
+  status: "active" | "disabled";
+  lastLoginAt: string | null;
 };
 
 const labels: Record<string, string> = {
@@ -48,7 +59,19 @@ export function SettingsPage() {
     queryKey: ["settings"],
     queryFn: () => apiFetch<Setting[]>("/api/settings")
   });
+  const { data: session } = useQuery({
+    queryKey: ["session"],
+    queryFn: () => apiFetch<SessionInfo>("/api/auth/session"),
+    retry: false
+  });
+  const isAdmin = session?.user?.role === "admin";
+  const usersQuery = useQuery({
+    queryKey: ["admin-users"],
+    queryFn: () => apiFetch<UserRow[]>("/api/admin/users"),
+    enabled: isAdmin
+  });
   const [draft, setDraft] = useState<Record<string, unknown>>({});
+  const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "viewer" });
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -86,6 +109,28 @@ export function SettingsPage() {
     },
     onError: (error) => setOperationMessage(error instanceof Error ? error.message : "Falha ao limpar dados demo.")
   });
+  const createUserMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<UserRow>("/api/admin/users", {
+        method: "POST",
+        body: JSON.stringify(newUser)
+      }),
+    onSuccess: () => {
+      setNewUser({ name: "", email: "", password: "", role: "viewer" });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      setOperationMessage("Usuario criado com sucesso.");
+    },
+    onError: (error) => setOperationMessage(error instanceof Error ? error.message : "Falha ao criar usuario.")
+  });
+  const updateUserMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      apiFetch<UserRow>(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-users"] })
+  });
+  const disableUserMutation = useMutation({
+    mutationFn: (id: string) => apiFetch<UserRow>(`/api/admin/users/${id}/disable`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-users"] })
+  });
 
   const persisted = useMemo(
     () => Object.fromEntries((data ?? []).map((setting) => [setting.key, setting.value])),
@@ -111,7 +156,7 @@ export function SettingsPage() {
             Parâmetros operacionais do painel. Credenciais reais ficam apenas em secrets do servidor.
           </p>
         </div>
-        <Button onClick={() => mutation.mutate(form)}>
+        <Button onClick={() => mutation.mutate(form)} disabled={!isAdmin || mutation.isPending}>
           <Save /> Salvar ajustes
         </Button>
       </div>
@@ -136,7 +181,7 @@ export function SettingsPage() {
               <RefreshCw className={syncOpenClawMutation.isPending ? "animate-spin" : ""} />
               Sincronizar OpenClaw
             </Button>
-            <Button variant="destructive" onClick={clearDemoData} disabled={clearDemoMutation.isPending}>
+            <Button variant="destructive" onClick={clearDemoData} disabled={!isAdmin || clearDemoMutation.isPending}>
               <Trash2 />
               Limpar demo data
             </Button>
@@ -191,6 +236,76 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {isAdmin ? (
+        <Card>
+          <CardHeader><CardTitle>Usuarios e permissoes</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_160px_auto]">
+              <Input
+                placeholder="Nome"
+                value={newUser.name}
+                onChange={(event) => setNewUser((current) => ({ ...current, name: event.target.value }))}
+              />
+              <Input
+                placeholder="email@dominio.com"
+                value={newUser.email}
+                onChange={(event) => setNewUser((current) => ({ ...current, email: event.target.value }))}
+              />
+              <Input
+                placeholder="Senha inicial"
+                type="password"
+                value={newUser.password}
+                onChange={(event) => setNewUser((current) => ({ ...current, password: event.target.value }))}
+              />
+              <Select value={newUser.role} onValueChange={(value) => setNewUser((current) => ({ ...current, role: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={() => createUserMutation.mutate()} disabled={createUserMutation.isPending}>
+                <UserPlus /> Criar
+              </Button>
+            </div>
+            <div className="overflow-hidden rounded-md border">
+              {(usersQuery.data ?? []).map((user) => (
+                <div key={user.id} className="grid gap-3 border-b p-3 last:border-b-0 md:grid-cols-[1fr_1fr_160px_120px_auto] md:items-center">
+                  <div>
+                    <p className="font-medium">{user.name}</p>
+                    <p className="text-xs text-muted-foreground">Ultimo login: {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString("pt-BR") : "nunca"}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{user.email}</p>
+                  <Select
+                    value={user.role}
+                    onValueChange={(role) => updateUserMutation.mutate({ id: user.id, body: { role } })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="editor">Editor</SelectItem>
+                      <SelectItem value="viewer">Viewer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className={user.status === "active" ? "text-sm text-emerald-300" : "text-sm text-muted-foreground"}>
+                    {user.status === "active" ? "Ativo" : "Desativado"}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={user.status === "disabled" || disableUserMutation.isPending}
+                    onClick={() => disableUserMutation.mutate(user.id)}
+                  >
+                    Desativar
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

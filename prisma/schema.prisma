@@ -57,6 +57,23 @@ enum ReviewStatus {
   returned_to_validator
 }
 
+enum UserRole {
+  admin
+  editor
+  viewer
+}
+
+enum UserStatus {
+  active
+  disabled
+}
+
+enum AlertStatus {
+  active
+  acknowledged
+  resolved
+}
+
 enum AuditEventType {
   job_created
   relevance_scored
@@ -86,6 +103,21 @@ enum AuditEventType {
   webhook_received
   errors_cleared
   agent_restarted
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         UserRole   @default(viewer)
+  status       UserStatus @default(active)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([role])
+  @@index([status])
 }
 
 model Agent {
@@ -237,4 +269,27 @@ model SystemSetting {
   value     Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model SystemAlert {
+  id            String      @id @default(cuid())
+  title         String
+  message       String
+  severity      LogSeverity @default(warning)
+  status        AlertStatus @default(active)
+  source        String
+  dedupeKey     String?     @unique
+  relatedJobId  String?
+  relatedAgentId String?
+  metadata      Json?
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  resolvedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([status])
+  @@index([severity])
+  @@index([source])
+  @@index([createdAt])
 }

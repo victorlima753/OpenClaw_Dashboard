@@ -52,6 +52,10 @@ Secrets mínimos:
 - `OPENCLAW_CLIENT_ID=gateway-client`
 - `OPENCLAW_CLIENT_MODE=backend`
 - `OPENCLAW_WEBHOOK_SECRET`
+- `N8N_WEBHOOK_SECRET`
+- `WORDPRESS_WEBHOOK_SECRET`
+- `INOREADER_WEBHOOK_SECRET`
+- `ALERT_WEBHOOK_URL` opcional
 - `OPENCLAW_AGENT_MAP_JSON`
 
 No EasyPanel, `ADMIN_USERNAME` e `ADMIN_PASSWORD` podem ser preenchidos com ou sem aspas. O app normaliza aspas externas e espaços acidentais para evitar erro de login quando o valor é copiado do `.env.example`.
@@ -68,3 +72,5 @@ Crie também um segundo serviço no EasyPanel para o worker realtime com o mesmo
 ```sh
 npm run worker:openclaw
 ```
+
+Veja o checklist final, RBAC e contratos dos webhooks em `docs/production-finalization.md`.

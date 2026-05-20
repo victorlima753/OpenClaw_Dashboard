@@ -9,6 +9,8 @@ import {
   seedSources
 } from "../src/lib/mock/seed-data";
 import { prisma } from "../src/lib/prisma";
+import { getRequiredCredential, normalizeCredential } from "../src/lib/auth/credentials";
+import { hashPassword } from "../src/lib/auth/password";
 
 async function main() {
   await prisma.agentLog.deleteMany();
@@ -18,6 +20,8 @@ async function main() {
   await prisma.articleJob.deleteMany();
   await prisma.agent.deleteMany();
   await prisma.systemSetting.deleteMany();
+  await prisma.systemAlert.deleteMany();
+  await prisma.user.deleteMany();
 
   const agentsBySlug = new Map<string, string>();
 
@@ -120,8 +124,20 @@ async function main() {
     });
   }
 
+  const adminUsername = normalizeCredential(getRequiredCredential("ADMIN_USERNAME", "admin"));
+  const adminPassword = normalizeCredential(getRequiredCredential("ADMIN_PASSWORD", "admin"));
+  await prisma.user.create({
+    data: {
+      name: adminUsername,
+      email: adminUsername.includes("@") ? adminUsername.toLowerCase() : `${adminUsername.toLowerCase()}@techsouls.local`,
+      passwordHash: hashPassword(adminPassword),
+      role: "admin",
+      status: "active"
+    }
+  });
+
   console.log(
-    `Seed completo: ${seedAgents.length} agentes, ${seedJobs.length} jobs, ${seedLogs.length} logs.`
+    `Seed completo: ${seedAgents.length} agentes, ${seedJobs.length} jobs, ${seedLogs.length} logs e admin inicial.`
   );
 }
 

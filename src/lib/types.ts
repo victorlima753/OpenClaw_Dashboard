@@ -160,6 +160,15 @@ export type DashboardStats = {
   tasksByAgent: { agent: string; total: number }[];
   recentLogs: AgentLogDto[];
   criticalAlerts: AgentLogDto[];
+  systemAlerts?: {
+    id: string;
+    title: string;
+    message: string;
+    severity: LogSeverity;
+    status: string;
+    source: string;
+    createdAt: string;
+  }[];
   openClaw?: {
     realEnabled: boolean;
     connected: boolean;
@@ -186,10 +195,14 @@ export type OpenClawOverview = {
   webhook: {
     configured: boolean;
     receivedCount: number;
+    duplicateCount: number;
     latestReceivedAt: string | null;
     latestEvent: string | null;
     latestJobId: string | null;
     latestAgentKey: string | null;
+    latestError: AgentLogDto | null;
+    byAgent: { agentId: string | null; agentName: string; total: number }[];
+    byStatus: { status: JobStatus; total: number }[];
     latestLog: AgentLogDto | null;
     curlExample: string;
   };
@@ -213,7 +226,28 @@ export type OpenClawOverview = {
     openClaw: number;
     seed: number;
     manual: number;
+    n8n: number;
+    wordpress: number;
+    inoreader: number;
     latest: ArticleJobDto[];
+  };
+  integrations: {
+    n8nWebhookSecretConfigured: boolean;
+    wordpressWebhookSecretConfigured: boolean;
+    inoreaderWebhookSecretConfigured: boolean;
+    alertWebhookConfigured: boolean;
+  };
+  alerts: {
+    activeCount: number;
+    latest: {
+      id: string;
+      title: string;
+      message: string;
+      severity: LogSeverity;
+      status: string;
+      source: string;
+      createdAt: string;
+    }[];
   };
   recentLogs: AgentLogDto[];
 };

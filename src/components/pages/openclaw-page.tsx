@@ -2,7 +2,20 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bot, CheckCircle2, PlayCircle, RadioTower, RefreshCw, Send, Server, Terminal, Unplug, Webhook } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  ClipboardCheck,
+  PlayCircle,
+  RadioTower,
+  RefreshCw,
+  Send,
+  Server,
+  Terminal,
+  Unplug,
+  Webhook
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -138,9 +151,20 @@ export function OpenClawPage() {
                 <p className="mt-1 text-2xl font-semibold">{compactNumber(data.webhook.receivedCount)}</p>
               </div>
               <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">Duplicados ignorados</p>
+                <p className="mt-1 text-2xl font-semibold">{compactNumber(data.webhook.duplicateCount)}</p>
+              </div>
+              <div className="rounded-md border p-3">
                 <p className="text-xs text-muted-foreground">Ultimo evento</p>
                 <p className="mt-1 truncate text-sm font-medium">{data.webhook.latestEvent ?? "-"}</p>
                 <p className="mt-1 truncate text-xs text-muted-foreground">{data.webhook.latestJobId ?? "Sem job"}</p>
+              </div>
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">Ultimo problema</p>
+                <p className="mt-1 truncate text-sm font-medium">{data.webhook.latestError?.decision ?? "-"}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {data.webhook.latestError ? formatRelativeTime(data.webhook.latestError.createdAt) : "Sem erros"}
+                </p>
               </div>
             </div>
             {!data.webhook.configured ? (
@@ -163,6 +187,15 @@ export function OpenClawPage() {
                 <p className="text-sm">{data.webhook.latestLog.message}</p>
               </div>
             ) : null}
+            {data.webhook.latestError ? (
+              <div className="rounded-md border border-amber-500/25 bg-amber-500/10 p-3">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-100">
+                  <AlertTriangle className="size-4" />
+                  Ultimo alerta do webhook
+                </div>
+                <p className="text-sm text-amber-100">{data.webhook.latestError.message}</p>
+              </div>
+            ) : null}
           </div>
           <div className="min-w-0 rounded-md border bg-muted/20 p-3">
             <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
@@ -173,6 +206,66 @@ export function OpenClawPage() {
               {data.webhook.curlExample}
             </pre>
           </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Eventos por agente</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {data.webhook.byAgent.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum webhook de agente recebido ainda.</p>
+            ) : (
+              data.webhook.byAgent.map((row) => (
+                <div key={row.agentId ?? "none"} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                  <span>{row.agentName}</span>
+                  <Badge>{compactNumber(row.total)}</Badge>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Jobs reais por status</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 sm:grid-cols-2">
+            {data.webhook.byStatus.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum job OpenClaw real recebido ainda.</p>
+            ) : (
+              data.webhook.byStatus.map((row) => (
+                <div key={row.status} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                  <JobStatusBadge status={row.status} />
+                  <span className="font-medium">{compactNumber(row.total)}</span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ClipboardCheck className="size-5 text-emerald-300" />
+            Checklist de producao
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
+          {[
+            "OPENCLAW_WEBHOOK_SECRET configurado no dashboard e nos agentes.",
+            "Worker OpenClaw rodando como segundo servico no EasyPanel.",
+            "Cada agente colou o snippet TechSoulsJobUpdate v1 correspondente.",
+            "Todos os agentes reutilizam o mesmo jobId do inicio ao fim.",
+            "Curl de teste retorna 200 e cria card no Kanban.",
+            "Um job real passa por pesquisa, escrita, compliance e publisher mockado."
+          ].map((item) => (
+            <div key={item} className="rounded-md border p-3">
+              {item}
+            </div>
+          ))}
         </CardContent>
       </Card>
 

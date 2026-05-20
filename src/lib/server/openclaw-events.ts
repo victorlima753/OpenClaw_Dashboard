@@ -320,6 +320,17 @@ function dedupeKey(input: {
   return input.idempotencyKey ?? `${input.jobId ?? "unknown"}:${input.agentKey ?? "unknown"}:${input.event}`;
 }
 
+async function incrementSystemCounter(key: string) {
+  const existing = await prisma.systemSetting.findUnique({ where: { key } });
+  const current = isRecord(existing?.value) ? numberValue(existing.value.count) ?? 0 : 0;
+  await prisma.systemSetting.upsert({
+    where: { key },
+    create: { key, value: { count: 1, updatedAt: new Date().toISOString() } },
+    update: { value: { count: current + 1, updatedAt: new Date().toISOString() } }
+  });
+  return current + 1;
+}
+
 function statusFromEvent(event: string) {
   const normalized = event.toLowerCase().replaceAll("-", "_").replaceAll(".", "_");
   if ((jobStatuses as string[]).includes(normalized)) return normalized as JobStatus;
@@ -774,6 +785,35 @@ export async function applyOpenClawTaskUpdate(input: {
     });
 
     if (duplicate) {
+      await incrementSystemCounter("openclaw_webhook_duplicate_count");
+      await prisma.systemSetting.upsert({
+        where: { key: "openclaw_latest_webhook" },
+        create: {
+          key: "openclaw_latest_webhook",
+          value: {
+            event: input.event,
+            jobId,
+            agentKey: agentKey ?? null,
+            status: status ?? null,
+            completedStage: input.completedStage ?? null,
+            idempotencyKey: webhookDedupeKey,
+            duplicate: true,
+            receivedAt: new Date().toISOString()
+          }
+        },
+        update: {
+          value: {
+            event: input.event,
+            jobId,
+            agentKey: agentKey ?? null,
+            status: status ?? null,
+            completedStage: input.completedStage ?? null,
+            idempotencyKey: webhookDedupeKey,
+            duplicate: true,
+            receivedAt: new Date().toISOString()
+          }
+        }
+      });
       return {
         accepted: true,
         duplicate: true,
@@ -1010,6 +1050,7 @@ export async function applyOpenClawTaskUpdate(input: {
         status: status ?? null,
         completedStage: input.completedStage ?? null,
         idempotencyKey: webhookDedupeKey,
+        duplicate: false,
         receivedAt: new Date().toISOString()
       }
     },
@@ -1021,6 +1062,7 @@ export async function applyOpenClawTaskUpdate(input: {
         status: status ?? null,
         completedStage: input.completedStage ?? null,
         idempotencyKey: webhookDedupeKey,
+        duplicate: false,
         receivedAt: new Date().toISOString()
       }
     }

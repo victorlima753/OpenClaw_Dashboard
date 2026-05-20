@@ -23,6 +23,7 @@ export function AgentDetailPage() {
 
   const successRate = (agent.successCount / Math.max(1, agent.successCount + agent.failureCount)) * 100;
   const approvalRate = Math.max(52, Math.min(98, successRate - 3));
+  const openClawEvents = agent.logs?.filter((log) => log.stage === "OpenClaw webhook" || log.stage === "OpenClaw session") ?? [];
 
   return (
     <div className="space-y-5">
@@ -85,6 +86,7 @@ export function AgentDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="history">Histórico</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>
+          <TabsTrigger value="openclaw">OpenClaw</TabsTrigger>
           <TabsTrigger value="payloads">Payloads</TabsTrigger>
           <TabsTrigger value="errors">Erros</TabsTrigger>
         </TabsList>
@@ -163,6 +165,37 @@ export function AgentDetailPage() {
               </CardContent>
             </Card>
           ))}
+        </TabsContent>
+
+        <TabsContent value="openclaw" className="space-y-3">
+          {openClawEvents.length === 0 ? (
+            <Card>
+              <CardContent className="p-4 text-sm text-muted-foreground">
+                Este agente ainda nao emitiu eventos reais OpenClaw para o dashboard.
+              </CardContent>
+            </Card>
+          ) : (
+            openClawEvents.map((log) => (
+              <Card key={log.id}>
+                <CardContent className="p-4">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <SeverityBadge severity={log.severity} />
+                      <span className="text-sm font-medium">{log.stage}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{formatRelativeTime(log.createdAt)}</span>
+                  </div>
+                  <p className="text-sm">{log.message}</p>
+                  {log.job ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {log.job.jobId} - {log.job.title}
+                    </p>
+                  ) : null}
+                  {log.outputPayload ? <JsonViewer value={log.outputPayload} /> : null}
+                </CardContent>
+              </Card>
+            ))
+          )}
         </TabsContent>
 
         <TabsContent value="payloads" className="space-y-3">

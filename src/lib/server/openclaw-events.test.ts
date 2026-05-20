@@ -26,6 +26,7 @@ const prismaMock = vi.hoisted(() => ({
     update: vi.fn()
   },
   systemSetting: {
+    findUnique: vi.fn(),
     upsert: vi.fn()
   },
   agentLog: {
@@ -219,6 +220,7 @@ describe("extractOpenClawAgents", () => {
     prismaMock.payloadSnapshot.findFirst.mockResolvedValue(null);
     prismaMock.source.findFirst.mockResolvedValue(null);
     prismaMock.humanReview.findFirst.mockResolvedValue(null);
+    prismaMock.systemSetting.findUnique.mockResolvedValue(null);
     prismaMock.agent.update.mockResolvedValue(writer);
     prismaMock.payloadSnapshot.create.mockResolvedValue({});
     prismaMock.source.create.mockResolvedValue({});
@@ -278,6 +280,7 @@ describe("extractOpenClawAgents", () => {
   it("deduplicates OpenClaw job updates by idempotency key", async () => {
     prismaMock.agent.findFirst.mockResolvedValue({ id: "agent-writer", name: "Writer", slug: "techsouls-blog-writer" });
     prismaMock.agentLog.findFirst.mockResolvedValue({ id: "log-1", createdAt: new Date() });
+    prismaMock.systemSetting.findUnique.mockResolvedValue({ value: { count: 2 } });
 
     const result = await applyOpenClawTaskUpdate({
       event: "article_written",
@@ -290,5 +293,11 @@ describe("extractOpenClawAgents", () => {
 
     expect(result).toEqual(expect.objectContaining({ accepted: true, duplicate: true, updatedJob: false }));
     expect(prismaMock.articleJob.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.systemSetting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "openclaw_webhook_duplicate_count" },
+        update: expect.objectContaining({ value: expect.objectContaining({ count: 3 }) })
+      })
+    );
   });
 });

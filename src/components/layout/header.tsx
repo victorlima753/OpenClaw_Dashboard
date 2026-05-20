@@ -3,16 +3,28 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
 import { Bell, LogOut, Menu, Moon, Search, Shield, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { apiFetch } from "@/lib/api/client";
 import { useRealtime } from "@/lib/api/use-realtime";
+
+type SessionInfo = {
+  authenticated: boolean;
+  user?: { name: string; email: string; role: "admin" | "editor" | "viewer" };
+};
 
 export function Header() {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const events = useRealtime();
+  const { data: session } = useQuery({
+    queryKey: ["session"],
+    queryFn: () => apiFetch<SessionInfo>("/api/auth/session"),
+    retry: false
+  });
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -41,7 +53,9 @@ export function Header() {
         <div className="ml-auto flex items-center gap-2">
           <div className="hidden items-center gap-2 rounded-md border px-3 py-2 sm:flex">
             <Shield className="size-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Admin autenticado</span>
+            <span className="text-xs text-muted-foreground">
+              {session?.user?.role ? `${session.user.role} · ${session.user.name}` : "Sessao autenticada"}
+            </span>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>

@@ -193,11 +193,78 @@ export const techSoulsJobUpdateSchema = z
     agentSlug: z.string().optional(),
     agentExternalId: z.string().optional(),
     status: jobStatusSchema,
-    completedStage: z.string().min(1).optional(),
-    idempotencyKey: z.string().min(1).optional(),
+    completedStage: z.string().min(1),
+    idempotencyKey: z.string().min(1),
     timestamp: z.string().optional(),
     severity: severitySchema.default("info"),
-    payload: techSoulsJobUpdatePayloadSchema.default({})
+    payload: techSoulsJobUpdatePayloadSchema
+  })
+  .passthrough();
+
+export const n8nAffiliateResultSchema = z
+  .object({
+    jobId: z.string().min(1),
+    idempotencyKey: z.string().min(1),
+    status: z.enum(["accepted", "skipped", "failed"]).default("accepted"),
+    timestamp: z.string().optional(),
+    payload: z
+      .object({
+        hasAffiliate: z.boolean().optional(),
+        monetizationScore: z.number().int().min(0).max(100).nullable().optional(),
+        affiliateProvider: z.string().optional(),
+        affiliateUrl: z.string().url().optional(),
+        decision: z.string().optional(),
+        reason: z.string().optional(),
+        inputPayload: z.unknown().optional(),
+        outputPayload: z.unknown().optional(),
+        errors: z.array(z.unknown()).optional()
+      })
+      .passthrough()
+  })
+  .passthrough();
+
+export const wordpressPublishResultSchema = z
+  .object({
+    jobId: z.string().min(1),
+    idempotencyKey: z.string().min(1),
+    status: z.enum(["drafted", "published", "failed"]),
+    timestamp: z.string().optional(),
+    payload: z
+      .object({
+        wordpressPostId: z.string().optional(),
+        wordpress_post_id: z.string().optional(),
+        wordpressPreviewUrl: z.string().url().optional(),
+        wordpress_preview_url: z.string().url().optional(),
+        postUrl: z.string().url().optional(),
+        errorMessage: z.string().optional(),
+        inputPayload: z.unknown().optional(),
+        outputPayload: z.unknown().optional(),
+        errors: z.array(z.unknown()).optional()
+      })
+      .passthrough()
+  })
+  .passthrough();
+
+export const inoreaderItemSchema = z
+  .object({
+    jobId: z.string().min(1),
+    idempotencyKey: z.string().min(1),
+    timestamp: z.string().optional(),
+    payload: z
+      .object({
+        title: z.string().min(3),
+        topic: z.string().optional(),
+        category: z.string().optional(),
+        sourceName: z.string().min(1),
+        sourceUrl: z.string().url(),
+        referenceUrls: z.array(z.string().url()).optional(),
+        publishedAt: z.string().optional(),
+        summary: z.string().optional(),
+        relevanceHint: z.number().int().min(0).max(100).optional(),
+        inputPayload: z.unknown().optional(),
+        outputPayload: z.unknown().optional()
+      })
+      .passthrough()
   })
   .passthrough();
 

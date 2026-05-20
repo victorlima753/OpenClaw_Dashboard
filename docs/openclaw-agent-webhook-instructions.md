@@ -121,9 +121,133 @@ Body JSON:
 }
 ```
 
-## Exemplos por etapa
+## Exemplos finais por agente
 
-### Writer
+Use estes exemplos como modelo direto. Mantenha o mesmo `jobId` em todas as etapas do mesmo pipeline.
+
+### editorial
+
+```json
+{
+  "event": "job_created",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "editorial",
+  "status": "researching",
+  "completedStage": "new",
+  "idempotencyKey": "editorial:ts-openclaw-2026-05-18-0001:job_created:1",
+  "severity": "info",
+  "payload": {
+    "title": "Nova pauta sobre IA em celulares",
+    "topic": "IA em smartphones",
+    "category": "Celulares",
+    "sourceName": "TechSouls Editorial",
+    "sourceUrl": "https://techsouls.com.br/",
+    "priority": "normal",
+    "scores": {
+      "editorial": 82
+    },
+    "inputPayload": {
+      "signal": "trend"
+    },
+    "outputPayload": {
+      "brief": "Investigar impacto para leitores brasileiros."
+    }
+  }
+}
+```
+
+### researcher
+
+```json
+{
+  "event": "research_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "researcher",
+  "status": "relevance_scoring",
+  "completedStage": "researching",
+  "idempotencyKey": "researcher:ts-openclaw-2026-05-18-0001:research_completed:1",
+  "severity": "info",
+  "payload": {
+    "sources": [
+      {
+        "name": "Fonte principal",
+        "url": "https://example.com/noticia",
+        "role": "primary",
+        "reliabilityScore": 88
+      }
+    ],
+    "outputPayload": {
+      "summary": "Resumo factual da pesquisa."
+    }
+  }
+}
+```
+
+### relevance-classifier
+
+```json
+{
+  "event": "relevance_scored",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "relevance-classifier",
+  "status": "clustering",
+  "completedStage": "relevance_scoring",
+  "idempotencyKey": "relevance-classifier:ts-openclaw-2026-05-18-0001:relevance_scored:1",
+  "severity": "info",
+  "payload": {
+    "scores": {
+      "relevance": 91
+    },
+    "outputPayload": {
+      "decision": "continue"
+    }
+  }
+}
+```
+
+### dedup-cluster
+
+```json
+{
+  "event": "cluster_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "dedup-cluster",
+  "status": "validating",
+  "completedStage": "clustering",
+  "idempotencyKey": "dedup-cluster:ts-openclaw-2026-05-18-0001:cluster_completed:1",
+  "severity": "info",
+  "payload": {
+    "clusterId": "cluster-ia-smartphones-2026-05-18",
+    "outputPayload": {
+      "duplicatesFound": 2
+    }
+  }
+}
+```
+
+### validator
+
+```json
+{
+  "event": "validation_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "validator",
+  "status": "writing",
+  "completedStage": "validating",
+  "idempotencyKey": "validator:ts-openclaw-2026-05-18-0001:validation_completed:1",
+  "severity": "info",
+  "payload": {
+    "scores": {
+      "validation": 88
+    },
+    "outputPayload": {
+      "warnings": []
+    }
+  }
+}
+```
+
+### writer
 
 ```json
 {
@@ -143,7 +267,95 @@ Body JSON:
 }
 ```
 
-### Compliance com revisao humana
+### seo-agent
+
+```json
+{
+  "event": "seo_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "seo-agent",
+  "status": "affiliate_routing",
+  "completedStage": "seo_optimizing",
+  "idempotencyKey": "seo-agent:ts-openclaw-2026-05-18-0001:seo_completed:1",
+  "severity": "info",
+  "payload": {
+    "scores": {
+      "seo": 84
+    },
+    "outputPayload": {
+      "metaTitle": "IA em celulares: o que muda",
+      "metaDescription": "Resumo otimizado para busca."
+    }
+  }
+}
+```
+
+### affiliate-agent
+
+```json
+{
+  "event": "affiliate_decided",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "affiliate-agent",
+  "status": "copywriting",
+  "completedStage": "affiliate_routing",
+  "idempotencyKey": "affiliate-agent:ts-openclaw-2026-05-18-0001:affiliate_decided:1",
+  "severity": "info",
+  "payload": {
+    "hasAffiliate": true,
+    "scores": {
+      "monetization": 76
+    },
+    "outputPayload": {
+      "affiliateRoute": "smartphones"
+    }
+  }
+}
+```
+
+### copywriter
+
+```json
+{
+  "event": "copy_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "copywriter",
+  "status": "editing",
+  "completedStage": "copywriting",
+  "idempotencyKey": "copywriter:ts-openclaw-2026-05-18-0001:copy_completed:1",
+  "severity": "info",
+  "payload": {
+    "title": "IA nos celulares: recurso novo promete mudar a rotina",
+    "outputPayload": {
+      "socialHeadline": "IA nos celulares: entenda o novo recurso"
+    }
+  }
+}
+```
+
+### editor-final
+
+```json
+{
+  "event": "editorial_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "editor-final",
+  "status": "compliance_checking",
+  "completedStage": "editing",
+  "idempotencyKey": "editor-final:ts-openclaw-2026-05-18-0001:editorial_completed:1",
+  "severity": "info",
+  "payload": {
+    "scores": {
+      "editorial": 89
+    },
+    "outputPayload": {
+      "decision": "approved_for_compliance"
+    }
+  }
+}
+```
+
+### compliance-agent com revisao humana
 
 ```json
 {
@@ -167,7 +379,30 @@ Body JSON:
 }
 ```
 
-### Publisher publicado
+### compliance-agent aprovado
+
+```json
+{
+  "event": "compliance_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "compliance-agent",
+  "status": "publishing",
+  "completedStage": "compliance_checking",
+  "idempotencyKey": "compliance-agent:ts-openclaw-2026-05-18-0001:compliance_completed:2",
+  "severity": "info",
+  "payload": {
+    "scores": {
+      "compliance": 94
+    },
+    "requiresHumanReview": false,
+    "outputPayload": {
+      "decision": "approved"
+    }
+  }
+}
+```
+
+### wp-publisher publicado
 
 ```json
 {
@@ -181,6 +416,84 @@ Body JSON:
   "payload": {
     "wordpressPostId": "12345",
     "wordpressPreviewUrl": "https://techsouls.com.br/?p=12345"
+  }
+}
+```
+
+### wp-publisher rascunho
+
+```json
+{
+  "event": "drafted",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "wp-publisher",
+  "status": "drafted",
+  "completedStage": "publishing",
+  "idempotencyKey": "wp-publisher:ts-openclaw-2026-05-18-0001:drafted:1",
+  "severity": "info",
+  "payload": {
+    "wordpressPostId": "12345",
+    "wordpressPreviewUrl": "https://techsouls.com.br/?p=12345"
+  }
+}
+```
+
+### social-agent
+
+```json
+{
+  "event": "social_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "social-agent",
+  "status": "published",
+  "completedStage": "published",
+  "idempotencyKey": "social-agent:ts-openclaw-2026-05-18-0001:social_completed:1",
+  "severity": "info",
+  "payload": {
+    "outputPayload": {
+      "channels": ["telegram"],
+      "message": "Post social preparado."
+    }
+  }
+}
+```
+
+### analytics-cro
+
+```json
+{
+  "event": "analytics_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "analytics-cro",
+  "status": "published",
+  "completedStage": "published",
+  "idempotencyKey": "analytics-cro:ts-openclaw-2026-05-18-0001:analytics_completed:1",
+  "severity": "info",
+  "payload": {
+    "outputPayload": {
+      "trackingReady": true,
+      "croNotes": "Monitorar CTR nas primeiras 24h."
+    }
+  }
+}
+```
+
+### audit-agent
+
+```json
+{
+  "event": "audit_completed",
+  "jobId": "ts-openclaw-2026-05-18-0001",
+  "agentExternalId": "audit-agent",
+  "status": "published",
+  "completedStage": "published",
+  "idempotencyKey": "audit-agent:ts-openclaw-2026-05-18-0001:audit_completed:1",
+  "severity": "info",
+  "payload": {
+    "outputPayload": {
+      "auditResult": "ok",
+      "checkedEvents": 12
+    }
   }
 }
 ```

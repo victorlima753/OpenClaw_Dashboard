@@ -47,7 +47,7 @@ export function LoginPage() {
           </div>
           <div>
             <h1 className="text-2xl font-semibold tracking-normal">TechSouls Command Center</h1>
-            <p className="text-sm text-muted-foreground">Acesso operacional restrito aos administradores.</p>
+            <p className="text-sm text-muted-foreground">Acesso operacional restrito a usuários autorizados.</p>
           </div>
         </div>
 

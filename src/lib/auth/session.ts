@@ -3,8 +3,10 @@ import type { NextRequest } from "next/server";
 export const SESSION_COOKIE_NAME = "techsouls_session";
 
 export type SessionPayload = {
+  userId: string;
   username: string;
-  role: "admin";
+  email: string;
+  role: "admin" | "editor" | "viewer";
   exp: number;
 };
 
@@ -63,10 +65,41 @@ export function constantEqual(left: string, right: string) {
   return diff === 0;
 }
 
-export async function createSessionToken(username: string) {
+export type Permission =
+  | "read"
+  | "operate_jobs"
+  | "review_jobs"
+  | "manage_settings"
+  | "manage_users"
+  | "manage_agents"
+  | "clear_demo_data"
+  | "ack_alerts";
+
+export const rolePermissions: Record<SessionPayload["role"], Permission[]> = {
+  admin: ["read", "operate_jobs", "review_jobs", "manage_settings", "manage_users", "manage_agents", "clear_demo_data", "ack_alerts"],
+  editor: ["read", "operate_jobs", "review_jobs", "ack_alerts"],
+  viewer: ["read"]
+};
+
+export function permissionsForRole(role: SessionPayload["role"]) {
+  return rolePermissions[role] ?? rolePermissions.viewer;
+}
+
+export function hasPermission(session: Pick<SessionPayload, "role"> | null, permission: Permission) {
+  return Boolean(session && permissionsForRole(session.role).includes(permission));
+}
+
+export async function createSessionToken(input: {
+  userId: string;
+  username: string;
+  email: string;
+  role: SessionPayload["role"];
+}) {
   const payload: SessionPayload = {
-    username,
-    role: "admin",
+    userId: input.userId,
+    username: input.username,
+    email: input.email,
+    role: input.role,
     exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12
   };
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
@@ -84,7 +117,15 @@ export async function verifySessionToken(token?: string | null): Promise<Session
 
   try {
     const payload = JSON.parse(base64UrlDecode(encodedPayload)) as SessionPayload;
-    if (!payload.username || payload.role !== "admin" || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    if (
+      !payload.userId ||
+      !payload.username ||
+      !payload.email ||
+      !["admin", "editor", "viewer"].includes(payload.role) ||
+      payload.exp < Math.floor(Date.now() / 1000)
+    ) {
+      return null;
+    }
     return payload;
   } catch {
     return null;

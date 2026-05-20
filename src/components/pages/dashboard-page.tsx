@@ -157,9 +157,19 @@ export function DashboardPage() {
 
         <Card className="border-red-500/25">
           <CardHeader>
-            <CardTitle>Falhas críticas</CardTitle>
+            <CardTitle>Alertas e falhas críticas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {(data.systemAlerts ?? []).map((alert) => (
+              <div key={alert.id} className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <SeverityBadge severity={alert.severity} />
+                  <span className="text-xs text-muted-foreground">{formatRelativeTime(alert.createdAt)}</span>
+                </div>
+                <p className="mt-2 text-sm font-medium">{alert.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{alert.message}</p>
+              </div>
+            ))}
             {data.criticalAlerts.map((log) => (
               <div key={log.id} className="rounded-md border border-red-500/20 bg-red-500/5 p-3">
                 <div className="flex items-center justify-between gap-3">

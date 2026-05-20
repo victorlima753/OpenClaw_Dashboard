@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { Check, RotateCcw, Send, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,6 +40,7 @@ export function TaskDetailPage() {
   const currentIndex = workflow.indexOf(job.status);
   const completed = workflow.filter((_, index) => currentIndex >= 0 && index <= currentIndex);
   const pending = workflow.filter((_, index) => currentIndex < 0 || index > currentIndex);
+  const openClawLogs = job.logs?.filter((log) => log.stage === "OpenClaw webhook") ?? [];
 
   return (
     <div className="space-y-5">
@@ -47,6 +49,9 @@ export function TaskDetailPage() {
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-normal">{job.title}</h1>
             <JobStatusBadge status={job.status} />
+            {job.dataSource === "openclaw" ? (
+              <Badge className="border-emerald-500/25 bg-emerald-500/10 text-emerald-200">OpenClaw real</Badge>
+            ) : null}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {job.jobId} · {job.topic} · {job.category}
@@ -117,6 +122,7 @@ export function TaskDetailPage() {
               <p><span className="text-muted-foreground">URL:</span> {job.sourceUrl}</p>
               <p><span className="text-muted-foreground">Cluster:</span> {job.clusterId ?? "Sem cluster"}</p>
               <p><span className="text-muted-foreground">Agente atual:</span> {job.assignedAgent?.name ?? "Sem agente"}</p>
+              <p><span className="text-muted-foreground">Origem:</span> {job.dataSource === "openclaw" ? "OpenClaw real" : job.dataSource}</p>
               <p><span className="text-muted-foreground">Criado:</span> {formatRelativeTime(job.createdAt)}</p>
               <p><span className="text-muted-foreground">WordPress:</span> {job.wordpressPostId ?? "Ainda nao enviado"}</p>
               {job.errorMessage ? <p className="text-red-300">{job.errorMessage}</p> : null}
@@ -132,6 +138,32 @@ export function TaskDetailPage() {
           <Card>
             <CardHeader><CardTitle>Etapas pendentes</CardTitle></CardHeader>
             <CardContent className="space-y-2">{pending.map((step) => <div key={step} className="rounded-md border p-3 text-sm text-muted-foreground">{step}</div>)}</CardContent>
+          </Card>
+          <Card className="lg:col-span-2">
+            <CardHeader><CardTitle>Eventos reais OpenClaw</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {openClawLogs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum webhook OpenClaw registrado para este job.</p>
+              ) : (
+                openClawLogs.map((log) => (
+                  <div key={log.id} className="rounded-md border p-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <SeverityBadge severity={log.severity} />
+                        <span className="text-sm font-medium">
+                          {log.inputPayload && typeof log.inputPayload === "object" && "event" in log.inputPayload
+                            ? String(log.inputPayload.event)
+                            : log.eventType}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{formatRelativeTime(log.createdAt)}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{log.message}</p>
+                    {log.outputPayload ? <JsonViewer value={log.outputPayload} /> : null}
+                  </div>
+                ))
+              )}
+            </CardContent>
           </Card>
         </TabsContent>
 
